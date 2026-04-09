@@ -1,0 +1,9 @@
+[claude]
+# F12 → Network → /usage 요청 클릭 → Request Headers → cookie 값 전체 복사
+cookies =
+
+# F12 → Network → URL에서 /organizations/{UUID}/ 부분
+org_id  =
+
+# API 갱신 주기 (초)
+poll_interval = 60

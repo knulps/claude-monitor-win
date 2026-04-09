@@ -6,10 +6,12 @@ Claude Usage Floating Overlay
 - 60초마다 자동 갱신, 매분 카운트다운 갱신
 """
 
+import configparser
 import sys
 import threading
 import tkinter as tk
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     from curl_cffi import requests
@@ -18,11 +20,14 @@ except ImportError:
     import requests
     IMPERSONATE = None
 
-# ── 설정 ──────────────────────────────────────────────────────
-# F12 → Network → /usage 요청 클릭 → Request Headers → cookie 값 전체 복사
-COOKIES       = ''
-ORG_ID        = ""   # F12 → Network → URL에서 /organizations/{UUID}/ 부분
-POLL_INTERVAL = 60   # API 갱신 주기 (초)
+# ── 설정 (config.ini에서 읽음) ────────────────────────────────
+_cfg = configparser.ConfigParser()
+_cfg_path = Path(__file__).parent / "config.ini"
+_cfg.read(_cfg_path, encoding="utf-8")
+
+COOKIES       = _cfg.get("claude", "cookies",       fallback="")
+ORG_ID        = _cfg.get("claude", "org_id",        fallback="")
+POLL_INTERVAL = _cfg.getint("claude", "poll_interval", fallback=60)
 # ──────────────────────────────────────────────────────────────
 
 USAGE_URL = f"https://claude.ai/api/organizations/{ORG_ID}/usage"
@@ -48,8 +53,11 @@ def time_until(iso_str):
         secs  = int((reset - now).total_seconds())
         if secs <= 0:
             return "곧 리셋"
-        h, r = divmod(secs, 3600)
-        m    = r // 60
+        d, r1 = divmod(secs, 86400)
+        h, r2 = divmod(r1, 3600)
+        m      = r2 // 60
+        if d:
+            return f"{d}d {h}h"
         return f"{h}h {m:02d}m" if h else f"{m}m"
     except Exception:
         return "?"
@@ -57,7 +65,7 @@ def time_until(iso_str):
 
 # ── 메인 창 ───────────────────────────────────────────────────
 class ClaudeOverlay:
-    W, H = 230, 160   # 창 크기
+    W, H = 230, 178   # 창 크기
 
     def __init__(self):
         self.root = tk.Tk()
@@ -76,8 +84,9 @@ class ClaudeOverlay:
         self._bind_drag()
         self._bind_menu()
 
-        self._reset_at = None
-        self._stop     = threading.Event()
+        self._reset_at    = None
+        self._reset_7d_at = None
+        self._stop        = threading.Event()
         self.data      = {}
 
         threading.Thread(target=self._poll_loop, daemon=True).start()
@@ -86,7 +95,7 @@ class ClaudeOverlay:
     # ── UI 구성 ──────────────────────────────────────────────
     def _build_ui(self):
         BG   = "#1C1C1E"
-        DIM  = "#636366"
+        DIM  = "#AEAEB2"
         SEP  = "#2C2C2E"
 
         # ── 헤더 ──
@@ -133,6 +142,11 @@ class ClaudeOverlay:
                                    font=("Segoe UI", 10))
         self.lbl_sonnet.pack(side="right")
 
+        # 7일 리셋
+        self.lbl_7d_reset = tk.Label(self.root, text="", bg=BG, fg=DIM,
+                                     font=("Segoe UI", 8), anchor="w")
+        self.lbl_7d_reset.pack(fill="x", padx=10, pady=(0, 2))
+
         # Extra
         self.lbl_extra = tk.Label(self.root, text="Extra: —", bg=BG, fg=DIM,
                                   font=("Segoe UI", 8), anchor="w")
@@ -166,6 +180,8 @@ class ClaudeOverlay:
             text=f"7일  {pct7:.0f}%" if pct7 is not None else "7일  —%",
             fg=pct_color(pct7),
         )
+        self._reset_7d_at = sd.get("resets_at")
+        self.lbl_7d_reset.config(text=f"7일 리셋 {time_until(self._reset_7d_at)}")
 
         # Sonnet
         pctsn = sn.get("utilization")
@@ -190,6 +206,8 @@ class ClaudeOverlay:
     def _tick(self):
         if self._reset_at:
             self.lbl_5h_reset.config(text=f"리셋 {time_until(self._reset_at)}")
+        if self._reset_7d_at:
+            self.lbl_7d_reset.config(text=f"7일 리셋 {time_until(self._reset_7d_at)}")
         self.root.after(60_000, self._tick)
 
     # ── API 폴링 ─────────────────────────────────────────────
