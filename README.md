@@ -4,6 +4,10 @@
 
 Claude.ai 구독 사용량을 화면에 항상 표시하는 플로팅 오버레이 앱.
 
+<img src="screenshot.png" width="320" alt="Claude Usage Monitor 스크린샷" align="left">
+
+5h 세션 사용률과 리셋까지 남은 시간을 한눈에 확인. 화면 어디에나 고정해두고 쓸 수 있음.
+
 ## 표시 정보
 
 | 항목 | 설명 |
