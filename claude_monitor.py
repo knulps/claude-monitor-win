@@ -11,11 +11,17 @@ import threading
 import tkinter as tk
 from datetime import datetime, timezone
 
-import requests
+try:
+    from curl_cffi import requests
+    IMPERSONATE = "chrome124"
+except ImportError:
+    import requests
+    IMPERSONATE = None
 
 # ── 설정 ──────────────────────────────────────────────────────
-SESSION_KEY   = ""   # F12 → Application → Cookies → claude.ai → sessionKey
-ORG_ID        = ""   # F12 → Network → 요청 URL에서 /organizations/{UUID}/ 부분
+# F12 → Network → /usage 요청 클릭 → Request Headers → cookie 값 전체 복사
+COOKIES       = ''
+ORG_ID        = ""   # F12 → Network → URL에서 /organizations/{UUID}/ 부분
 POLL_INTERVAL = 60   # API 갱신 주기 (초)
 # ──────────────────────────────────────────────────────────────
 
@@ -189,18 +195,19 @@ class ClaudeOverlay:
     # ── API 폴링 ─────────────────────────────────────────────
     def _fetch(self):
         try:
-            r = requests.get(
-                USAGE_URL,
+            kwargs = dict(
                 headers={
-                    "Cookie": f"sessionKey={SESSION_KEY}",
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-                    ),
-                    "Referer": "https://claude.ai/",
+                    "Cookie": COOKIES,
+                    "Accept": "application/json",
+                    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+                    "Referer": "https://claude.ai/settings/usage",
+                    "Origin": "https://claude.ai",
                 },
                 timeout=10,
             )
+            if IMPERSONATE:
+                kwargs["impersonate"] = IMPERSONATE
+            r = requests.get(USAGE_URL, **kwargs)
             r.raise_for_status()
             return r.json()
         except Exception as e:
@@ -260,8 +267,8 @@ class ClaudeOverlay:
 
 # ── 엔트리 ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    if not SESSION_KEY:
-        print("SESSION_KEY를 설정하세요 (스크립트 상단 SESSION_KEY = \"...\")")
+    if not COOKIES:
+        print("COOKIES를 설정하세요 (스크립트 상단 COOKIES = \"...\")")
         sys.exit(1)
     if not ORG_ID:
         print("ORG_ID를 설정하세요 (스크립트 상단 ORG_ID = \"...\")")
