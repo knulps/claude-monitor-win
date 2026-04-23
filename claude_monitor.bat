@@ -1,0 +1,1 @@
+cmd /c "start "" /b pythonw claude_monitor.py"
