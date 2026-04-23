@@ -202,13 +202,20 @@ class ClaudeOverlay:
         now = datetime.now().strftime("%H:%M")
         self.lbl_updated.config(text=now)
 
-    # ── 카운트다운 (1분마다) ─────────────────────────────────
+    # ── 카운트다운 + topmost 재적용 (10초마다) ───────────────
     def _tick(self):
+        # Windows에서 fullscreen 앱·UAC·절전 복귀 등으로 topmost가 풀리면
+        # overrideredirect 창은 taskbar에도 안 떠서 복구 수단이 없다.
+        # 주기적으로 토글해 강제로 최상위를 유지한다.
+        self.root.attributes("-topmost", False)
+        self.root.attributes("-topmost", True)
+        self.root.lift()
+
         if self._reset_at:
             self.lbl_5h_reset.config(text=f"리셋 {time_until(self._reset_at)}")
         if self._reset_7d_at:
             self.lbl_7d_reset.config(text=f"7일 리셋 {time_until(self._reset_7d_at)}")
-        self.root.after(60_000, self._tick)
+        self.root.after(10_000, self._tick)
 
     # ── API 폴링 ─────────────────────────────────────────────
     def _fetch(self):
