@@ -1,9 +1,9 @@
 """
 Claude Usage Floating Overlay
-- 항상 최상위 반투명 창
-- 드래그로 위치 이동
-- 우클릭 메뉴: 새로고침 / 종료
-- 60초마다 자동 갱신, 매분 카운트다운 갱신
+- Always-on-top translucent window
+- Drag to reposition
+- Right-click menu: refresh / quit
+- Auto-refreshes every 60s; countdown ticks every 10s
 """
 
 import configparser
@@ -20,7 +20,7 @@ except ImportError:
     import requests
     IMPERSONATE = None
 
-# ── 설정 (config.ini에서 읽음) ────────────────────────────────
+# ── Config (loaded from config.ini) ──────────────────────────
 _cfg = configparser.ConfigParser()
 _cfg_path = Path(__file__).parent / "config.ini"
 _cfg.read(_cfg_path, encoding="utf-8")
@@ -28,20 +28,51 @@ _cfg.read(_cfg_path, encoding="utf-8")
 COOKIES       = _cfg.get("claude", "cookies",       fallback="")
 ORG_ID        = _cfg.get("claude", "org_id",        fallback="")
 POLL_INTERVAL = _cfg.getint("claude", "poll_interval", fallback=60)
+LANG          = _cfg.get("ui", "language", fallback="en").lower()
 # ──────────────────────────────────────────────────────────────
 
 USAGE_URL = f"https://claude.ai/api/organizations/{ORG_ID}/usage"
 
 
-# ── 유틸 ──────────────────────────────────────────────────────
+# ── i18n ─────────────────────────────────────────────────────
+TRANSLATIONS = {
+    "en": {
+        "session_5h":      "5h session",
+        "label_7d":        "7d",
+        "reset":           "Reset",
+        "reset_7d":        "7d Reset",
+        "menu_refresh":    "Refresh now",
+        "menu_quit":       "Quit",
+        "resetting_soon":  "Resetting soon",
+    },
+    "ko": {
+        "session_5h":      "5h 세션",
+        "label_7d":        "7일",
+        "reset":           "리셋",
+        "reset_7d":        "7일 리셋",
+        "menu_refresh":    "지금 새로고침",
+        "menu_quit":       "종료",
+        "resetting_soon":  "곧 리셋",
+    },
+}
+
+if LANG not in TRANSLATIONS:
+    LANG = "en"
+
+
+def T(key):
+    return TRANSLATIONS[LANG].get(key, key)
+
+
+# ── Utils ────────────────────────────────────────────────────
 def pct_color(pct):
     if pct is None:
         return "#636366"
     if pct < 60:
-        return "#30D158"   # 초록
+        return "#30D158"   # green
     if pct < 85:
-        return "#FFD60A"   # 노랑
-    return "#FF453A"       # 빨강
+        return "#FFD60A"   # yellow
+    return "#FF453A"       # red
 
 
 def time_until(iso_str):
@@ -52,7 +83,7 @@ def time_until(iso_str):
         now   = datetime.now(timezone.utc)
         secs  = int((reset - now).total_seconds())
         if secs <= 0:
-            return "곧 리셋"
+            return T("resetting_soon")
         d, r1 = divmod(secs, 86400)
         h, r2 = divmod(r1, 3600)
         m      = r2 // 60
@@ -63,19 +94,19 @@ def time_until(iso_str):
         return "?"
 
 
-# ── 메인 창 ───────────────────────────────────────────────────
+# ── Main window ──────────────────────────────────────────────
 class ClaudeOverlay:
-    W, H = 230, 178   # 창 크기
+    W, H = 230, 178   # window size
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.overrideredirect(True)      # 제목줄 제거
+        self.root.overrideredirect(True)      # no title bar
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.90)
         self.root.configure(bg="#1C1C1E")
         self.root.resizable(False, False)
 
-        # 화면 우측 하단 배치 (작업 표시줄 위)
+        # Bottom-right placement (above the taskbar)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         self.root.geometry(f"{self.W}x{self.H}+{sw - self.W - 16}+{sh - self.H - 56}")
@@ -92,13 +123,13 @@ class ClaudeOverlay:
         threading.Thread(target=self._poll_loop, daemon=True).start()
         self._tick()
 
-    # ── UI 구성 ──────────────────────────────────────────────
+    # ── UI build ─────────────────────────────────────────────
     def _build_ui(self):
         BG   = "#1C1C1E"
         DIM  = "#AEAEB2"
         SEP  = "#2C2C2E"
 
-        # ── 헤더 ──
+        # ── Header ──
         hdr = tk.Frame(self.root, bg=BG)
         hdr.pack(fill="x", padx=10, pady=(8, 2))
         tk.Label(hdr, text="Claude", bg=BG, fg=DIM,
@@ -109,11 +140,11 @@ class ClaudeOverlay:
 
         tk.Frame(self.root, bg=SEP, height=1).pack(fill="x", padx=10)
 
-        # ── 5h 세션 (메인 숫자) ──
+        # ── 5h session (main number) ──
         row5 = tk.Frame(self.root, bg=BG)
         row5.pack(fill="x", padx=10, pady=(6, 0))
 
-        tk.Label(row5, text="5h 세션", bg=BG, fg=DIM,
+        tk.Label(row5, text=T("session_5h"), bg=BG, fg=DIM,
                  font=("Segoe UI", 8)).pack(side="left", anchor="s", pady=(0, 4))
         self.lbl_5h_reset = tk.Label(row5, text="", bg=BG, fg=DIM,
                                      font=("Segoe UI", 8))
@@ -123,7 +154,7 @@ class ClaudeOverlay:
                                font=("Segoe UI", 32, "bold"))
         self.lbl_5h.pack(anchor="w", padx=10)
 
-        # 프로그레스 바
+        # Progress bar
         outer = tk.Frame(self.root, bg="#3A3A3C", height=5)
         outer.pack(fill="x", padx=10, pady=(0, 6))
         outer.pack_propagate(False)
@@ -132,17 +163,17 @@ class ClaudeOverlay:
 
         tk.Frame(self.root, bg=SEP, height=1).pack(fill="x", padx=10)
 
-        # ── 하단 행: 7일 / Sonnet ──
+        # ── Bottom row: 7-day / Sonnet ──
         row7 = tk.Frame(self.root, bg=BG)
         row7.pack(fill="x", padx=10, pady=(5, 2))
-        self.lbl_7d     = tk.Label(row7, text="7일  —%",     bg=BG, fg="#EBEBF5",
+        self.lbl_7d     = tk.Label(row7, text=f"{T('label_7d')}  —%", bg=BG, fg="#EBEBF5",
                                    font=("Segoe UI", 10))
         self.lbl_7d.pack(side="left")
         self.lbl_sonnet = tk.Label(row7, text="Sonnet  —%", bg=BG, fg="#EBEBF5",
                                    font=("Segoe UI", 10))
         self.lbl_sonnet.pack(side="right")
 
-        # 7일 리셋
+        # 7-day reset
         self.lbl_7d_reset = tk.Label(self.root, text="", bg=BG, fg=DIM,
                                      font=("Segoe UI", 8), anchor="w")
         self.lbl_7d_reset.pack(fill="x", padx=10, pady=(0, 2))
@@ -152,7 +183,7 @@ class ClaudeOverlay:
                                   font=("Segoe UI", 8), anchor="w")
         self.lbl_extra.pack(fill="x", padx=10, pady=(0, 6))
 
-    # ── 데이터 → UI ──────────────────────────────────────────
+    # ── Data → UI ────────────────────────────────────────────
     def _refresh_ui(self):
         d  = self.data
         fh = d.get("five_hour")    or {}
@@ -170,18 +201,18 @@ class ClaudeOverlay:
         self.bar.config(bg=c5)
         self.bar.place(relwidth=(pct5 or 0) / 100)
 
-        # 리셋 카운트다운
+        # Reset countdown
         self._reset_at = fh.get("resets_at")
-        self.lbl_5h_reset.config(text=f"리셋 {time_until(self._reset_at)}")
+        self.lbl_5h_reset.config(text=f"{T('reset')} {time_until(self._reset_at)}")
 
-        # 7일
+        # 7-day
         pct7 = sd.get("utilization")
         self.lbl_7d.config(
-            text=f"7일  {pct7:.0f}%" if pct7 is not None else "7일  —%",
+            text=f"{T('label_7d')}  {pct7:.0f}%" if pct7 is not None else f"{T('label_7d')}  —%",
             fg=pct_color(pct7),
         )
         self._reset_7d_at = sd.get("resets_at")
-        self.lbl_7d_reset.config(text=f"7일 리셋 {time_until(self._reset_7d_at)}")
+        self.lbl_7d_reset.config(text=f"{T('reset_7d')} {time_until(self._reset_7d_at)}")
 
         # Sonnet
         pctsn = sn.get("utilization")
@@ -198,26 +229,26 @@ class ClaudeOverlay:
             text=f"Extra: {used:.0f}/{limit} ({pctex:.1f}%)"
         )
 
-        # 갱신 시각
+        # Update time
         now = datetime.now().strftime("%H:%M")
         self.lbl_updated.config(text=now)
 
-    # ── 카운트다운 + topmost 재적용 (10초마다) ───────────────
+    # ── Countdown + topmost re-apply (every 10s) ─────────────
     def _tick(self):
-        # Windows에서 fullscreen 앱·UAC·절전 복귀 등으로 topmost가 풀리면
-        # overrideredirect 창은 taskbar에도 안 떠서 복구 수단이 없다.
-        # 주기적으로 토글해 강제로 최상위를 유지한다.
+        # On Windows, fullscreen apps / UAC / sleep-wake can clear topmost.
+        # An overrideredirect window has no taskbar presence, so the user
+        # has no way to bring it back. Periodically re-toggle to enforce it.
         self.root.attributes("-topmost", False)
         self.root.attributes("-topmost", True)
         self.root.lift()
 
         if self._reset_at:
-            self.lbl_5h_reset.config(text=f"리셋 {time_until(self._reset_at)}")
+            self.lbl_5h_reset.config(text=f"{T('reset')} {time_until(self._reset_at)}")
         if self._reset_7d_at:
-            self.lbl_7d_reset.config(text=f"7일 리셋 {time_until(self._reset_7d_at)}")
+            self.lbl_7d_reset.config(text=f"{T('reset_7d')} {time_until(self._reset_7d_at)}")
         self.root.after(10_000, self._tick)
 
-    # ── API 폴링 ─────────────────────────────────────────────
+    # ── API polling ──────────────────────────────────────────
     def _fetch(self):
         try:
             kwargs = dict(
@@ -243,12 +274,12 @@ class ClaudeOverlay:
         while not self._stop.is_set():
             data = self._fetch()
             if data:
-                # /usage 엔드포인트가 {"five_hour": ...} 또는 {"usage": {...}} 형태일 수 있음
+                # /usage endpoint returns either {"five_hour": ...} or {"usage": {...}}
                 self.data = data.get("usage", data)
                 self.root.after(0, self._refresh_ui)
             self._stop.wait(POLL_INTERVAL)
 
-    # ── 드래그 ───────────────────────────────────────────────
+    # ── Drag ─────────────────────────────────────────────────
     def _bind_drag(self):
         self.root.bind("<Button-1>",  self._drag_start)
         self.root.bind("<B1-Motion>", self._drag_move)
@@ -262,16 +293,16 @@ class ClaudeOverlay:
         y = self.root.winfo_y() + e.y - self._dy
         self.root.geometry(f"+{x}+{y}")
 
-    # ── 우클릭 메뉴 ──────────────────────────────────────────
+    # ── Right-click menu ─────────────────────────────────────
     def _bind_menu(self):
         self.root.bind("<Button-3>", self._show_menu)
 
     def _show_menu(self, e):
         menu = tk.Menu(self.root, tearoff=0, bg="#2C2C2E", fg="white",
                        activebackground="#3A3A3C", activeforeground="white")
-        menu.add_command(label="지금 새로고침", command=self._manual_refresh)
+        menu.add_command(label=T("menu_refresh"), command=self._manual_refresh)
         menu.add_separator()
-        menu.add_command(label="종료", command=self._quit)
+        menu.add_command(label=T("menu_quit"), command=self._quit)
         menu.post(e.x_root, e.y_root)
 
     def _manual_refresh(self):
@@ -290,12 +321,12 @@ class ClaudeOverlay:
         self.root.mainloop()
 
 
-# ── 엔트리 ───────────────────────────────────────────────────
+# ── Entry point ──────────────────────────────────────────────
 if __name__ == "__main__":
     if not COOKIES:
-        print("COOKIES를 설정하세요 (스크립트 상단 COOKIES = \"...\")")
+        print("Set 'cookies' under [claude] in config.ini")
         sys.exit(1)
     if not ORG_ID:
-        print("ORG_ID를 설정하세요 (스크립트 상단 ORG_ID = \"...\")")
+        print("Set 'org_id' under [claude] in config.ini")
         sys.exit(1)
     ClaudeOverlay().run()
