@@ -992,7 +992,7 @@ class FakeView:
 
 def test_initial_view_is_started_and_seeded(tmp_path):
     cfg = tmp_path / "c.ini"
-    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode=overlay\n", encoding="utf-8")
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
     mgr = ModeManager(
         cfg_path=cfg,
         view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
@@ -1006,7 +1006,7 @@ def test_initial_view_is_started_and_seeded(tmp_path):
 
 def test_data_callback_caches_and_dispatches(tmp_path):
     cfg = tmp_path / "c.ini"
-    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode=overlay\n", encoding="utf-8")
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
     mgr = ModeManager(
         cfg_path=cfg,
         view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
@@ -1021,7 +1021,7 @@ def test_data_callback_caches_and_dispatches(tmp_path):
 
 def test_switch_stops_old_starts_new_with_cache(tmp_path):
     cfg = tmp_path / "c.ini"
-    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode=overlay\n", encoding="utf-8")
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
     mgr = ModeManager(
         cfg_path=cfg,
         view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
@@ -1041,7 +1041,7 @@ def test_switch_stops_old_starts_new_with_cache(tmp_path):
 
 def test_save_mode_writes_to_config(tmp_path):
     cfg = tmp_path / "c.ini"
-    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode=overlay\n", encoding="utf-8")
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
     mgr = ModeManager(
         cfg_path=cfg,
         view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
@@ -1055,7 +1055,7 @@ def test_save_mode_writes_to_config(tmp_path):
 
 def test_no_save_mode_skips_writing(tmp_path):
     cfg = tmp_path / "c.ini"
-    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode=overlay\n", encoding="utf-8")
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
     mgr = ModeManager(
         cfg_path=cfg,
         view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
@@ -1187,6 +1187,10 @@ class ModeManager:
                 cfg_save_mode(self.cfg_path, mode)
             except Exception as e:
                 print(f"[mode save error] {e}")
+        # Stop the outgoing view before constructing the next one.
+        # View.stop() is idempotent, so a prior stop() from request_switch() is harmless.
+        if self.current_view:
+            self.current_view.stop()
         self.current_mode = mode
         self.current_view = self.view_factories[mode](self)
         self.current_view.start(self.last_data)
