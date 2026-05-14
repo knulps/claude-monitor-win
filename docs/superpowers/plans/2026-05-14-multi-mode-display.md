@@ -1705,8 +1705,9 @@ class AutohideView(OverlayView):
 
     def start(self, initial: Optional[UsageData]) -> None:
         super().start(initial)
-        # Reposition to docked state
-        self.root.after(50, self._dock_initial)
+        # Dock immediately, before hover polling starts, so _slide_in/_slide_out
+        # always have _geom_hidden/_geom_shown available.
+        self._dock_initial()
         self._poll_hover()
 
     def stop(self) -> None:
