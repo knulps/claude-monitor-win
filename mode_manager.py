@@ -65,19 +65,24 @@ class ModeManager:
 
     def on_poll_data(self, data):
         self.last_data = data
-        # Marshal back to main thread when the view is Tk-based
         view = self.current_view
         if view is None:
             return
         root = getattr(view, "root", None)
         if root is not None:
+            # Tk view: marshal onto the main thread. Guard the callback so a view
+            # swapped out between scheduling and running is skipped, and never fall
+            # through to a direct cross-thread call if scheduling fails.
             try:
-                root.after(0, lambda: view.on_update(data))
-                return
+                root.after(0, lambda v=view: v.on_update(data) if v is self.current_view else None)
             except Exception:
+                # root was destroyed mid-switch; the next poll reaches the new view.
                 pass
-        # CLI/tray views can be updated from any thread; both serialize internally
-        view.on_update(data)
+            return
+        # Non-Tk view (cli/tray), or a Tk view already stopped (root is None).
+        # Skip if it is no longer the current view so a stale view isn't touched.
+        if view is self.current_view:
+            view.on_update(data)
 
     # -- Public requests from views ----------------------------------------
 
