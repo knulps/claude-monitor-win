@@ -23,4 +23,4 @@ class View(ABC):
 
     @abstractmethod
     def on_update(self, data: UsageData) -> None:
-        """Called by ModeManager on the main thread when fresh data arrives."""
+        """Fresh data arrived. Tk views get this on the main thread; cli/tray on the Poller thread."""

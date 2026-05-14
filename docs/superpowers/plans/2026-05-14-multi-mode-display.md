@@ -716,7 +716,7 @@ class View(ABC):
 
     @abstractmethod
     def on_update(self, data: UsageData) -> None:
-        """Called by ModeManager on the main thread when fresh data arrives."""
+        """Fresh data arrived. Tk views get this on the main thread; cli/tray on the Poller thread."""
 ```
 
 - [ ] **Step 3: Commit**
@@ -1586,7 +1586,7 @@ def render_line(data: Optional[UsageData]) -> str:
         f"5h {color_for(data.five_hour_pct)}{_pct(data.five_hour_pct)}{RESET}",
         f"7d {color_for(data.seven_day_pct)}{_pct(data.seven_day_pct)}{RESET}",
         f"Sonnet {color_for(data.seven_day_sonnet_pct)}{_pct(data.seven_day_sonnet_pct)}{RESET}",
-        f"Extra {data.extra_used:.0f}/{data.extra_limit}",
+        f"Extra {(data.extra_used or 0):.0f}/{data.extra_limit or 0}",
         f"{T('reset')} {time_until(data.five_hour_resets_at)}",
         f"[{datetime.now().strftime('%H:%M')}]",
     ]
