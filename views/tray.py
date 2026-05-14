@@ -15,22 +15,21 @@ from views.base import View
 from views.overlay import pct_color, time_until
 
 ICON_SIZE = 64  # Rendered at 64 for clarity; Windows downsizes to 16/24/32
+ICON_BG = "#1C1C1E"  # dark background — high contrast against the status-colored digits
 
 
 def _font(size: int):
-    try:
-        return ImageFont.truetype("seguibl.ttf", size)
-    except Exception:
+    for name in ("seguisb.ttf", "segoeui.ttf", "arial.ttf"):
         try:
-            return ImageFont.truetype("arialbd.ttf", size)
+            return ImageFont.truetype(name, size)
         except Exception:
-            return ImageFont.load_default()
+            continue
+    return ImageFont.load_default()
 
 
 def make_icon_image(pct: Optional[float]) -> Image.Image:
-    """Solid color background with the percentage drawn on top."""
-    color = pct_color(pct)
-    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), color)
+    """Dark background with the percentage drawn in the status color."""
+    img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), ICON_BG)
     draw = ImageDraw.Draw(img)
     if pct is None:
         text = "—"
@@ -38,12 +37,12 @@ def make_icon_image(pct: Optional[float]) -> Image.Image:
         text = "!!"
     else:
         text = f"{int(pct)}"
-    font_size = 40 if len(text) == 1 else 32
+    font_size = 38 if len(text) == 1 else 30
     font = _font(font_size)
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((ICON_SIZE - tw) / 2 - bbox[0], (ICON_SIZE - th) / 2 - bbox[1]),
-              text, fill="white", font=font)
+              text, fill=pct_color(pct), font=font)
     return img
 
 
