@@ -990,6 +990,26 @@ class FakeView:
         self.updates.append(data)
 
 
+class FakeRoot:
+    def __init__(self):
+        self.after_calls = []
+
+    def after(self, ms, fn):
+        self.after_calls.append((ms, fn))
+
+
+class FakeTkView(FakeView):
+    """A FakeView that mimics a Tk-based view: it has a `root` attribute."""
+
+    def __init__(self, manager):
+        super().__init__(manager)
+        self.root = FakeRoot()
+
+    def stop(self):
+        super().stop()
+        self.root = None
+
+
 def test_initial_view_is_started_and_seeded(tmp_path):
     cfg = tmp_path / "c.ini"
     cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
@@ -1065,6 +1085,48 @@ def test_no_save_mode_skips_writing(tmp_path):
     mgr.start_initial("overlay")
     mgr._do_switch("tray")
     assert "mode = overlay" in cfg.read_text(encoding="utf-8")
+
+
+def test_on_poll_data_marshals_tk_view_via_after(tmp_path):
+    """A Tk view (has .root) gets on_update scheduled via root.after, not called directly."""
+    cfg = tmp_path / "c.ini"
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    mgr = ModeManager(
+        cfg_path=cfg,
+        view_factories={"overlay": FakeTkView, "tray": FakeTkView, "cli": FakeTkView, "autohide": FakeTkView},
+        poller=None,
+        save_mode=True,
+    )
+    mgr.start_initial("overlay")
+    mgr.on_poll_data("D1")
+    view = mgr.current_view
+    # Not dispatched directly from the (simulated) worker thread...
+    assert view.updates == []
+    # ...but scheduled via root.after
+    assert len(view.root.after_calls) == 1
+    _ms, fn = view.root.after_calls[0]
+    fn()
+    assert view.updates == ["D1"]
+
+
+def test_on_poll_data_skips_stale_tk_view_callback(tmp_path):
+    """If the view is swapped before the after-callback runs, the callback is a no-op."""
+    cfg = tmp_path / "c.ini"
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    mgr = ModeManager(
+        cfg_path=cfg,
+        view_factories={"overlay": FakeTkView, "tray": FakeTkView, "cli": FakeTkView, "autohide": FakeTkView},
+        poller=None,
+        save_mode=True,
+    )
+    mgr.start_initial("overlay")
+    old = mgr.current_view
+    mgr.on_poll_data("D1")
+    _ms, fn = old.root.after_calls[0]
+    # Switch before the scheduled callback runs
+    mgr._do_switch("tray")
+    fn()  # stale callback fires
+    assert old.updates == []          # stale view was NOT updated
 ```
 
 - [ ] **Step 2: Run test to confirm failure**
@@ -1142,19 +1204,24 @@ class ModeManager:
 
     def on_poll_data(self, data):
         self.last_data = data
-        # Marshal back to main thread when the view is Tk-based
         view = self.current_view
         if view is None:
             return
         root = getattr(view, "root", None)
         if root is not None:
+            # Tk view: marshal onto the main thread. Guard the callback so a view
+            # swapped out between scheduling and running is skipped, and never fall
+            # through to a direct cross-thread call if scheduling fails.
             try:
-                root.after(0, lambda: view.on_update(data))
-                return
+                root.after(0, lambda v=view: v.on_update(data) if v is self.current_view else None)
             except Exception:
+                # root was destroyed mid-switch; the next poll reaches the new view.
                 pass
-        # CLI/tray views can be updated from any thread; both serialize internally
-        view.on_update(data)
+            return
+        # Non-Tk view (cli/tray), or a Tk view already stopped (root is None).
+        # Skip if it is no longer the current view so a stale view isn't touched.
+        if view is self.current_view:
+            view.on_update(data)
 
     # -- Public requests from views ----------------------------------------
 
