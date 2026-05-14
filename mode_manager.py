@@ -110,7 +110,8 @@ class ModeManager:
                 cfg_save_mode(self.cfg_path, mode)
             except Exception as e:
                 print(f"[mode save error] {e}")
-        # Stop the outgoing view before constructing the next one
+        # Stop the outgoing view before constructing the next one.
+        # View.stop() is idempotent, so a prior stop() from request_switch() is harmless.
         if self.current_view:
             self.current_view.stop()
         self.current_mode = mode
