@@ -41,9 +41,11 @@ _current_lang = "en"
 
 
 def set_language(lang):
+    """Set the active UI language; falls back to 'en' for unknown codes."""
     global _current_lang
     _current_lang = lang if lang in TRANSLATIONS else "en"
 
 
 def T(key):
+    """Translate a key for the active language; returns the key itself if missing."""
     return TRANSLATIONS[_current_lang].get(key, key)
