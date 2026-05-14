@@ -1303,6 +1303,7 @@ git commit -m "feat: add ModeManager with view lifecycle and cache replay"
 ```python
 """Tray mode: pystray icon with color+number, hover tooltip, left-click popup."""
 
+import queue
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -1358,7 +1359,7 @@ def make_tooltip(data: Optional[UsageData]) -> str:
         f"5h session {fmt(data.five_hour_pct)}  · Reset {time_until(data.five_hour_resets_at)}\n"
         f"7d         {fmt(data.seven_day_pct)}  · Reset {time_until(data.seven_day_resets_at)}\n"
         f"Sonnet     {fmt(data.seven_day_sonnet_pct)}\n"
-        f"Extra      {data.extra_used:.0f}/{data.extra_limit} ({data.extra_pct:.1f}%)"
+        f"Extra      {(data.extra_used or 0):.0f}/{data.extra_limit or 0} ({(data.extra_pct or 0):.1f}%)"
     )
 
 
@@ -1374,11 +1375,13 @@ class TrayView(View):
         self._last: Optional[UsageData] = None
         self._tk_root: Optional[tk.Tk] = None
         self._stop = threading.Event()
+        # Cross-thread work queue: pystray/Poller threads enqueue, run_mainloop drains.
+        self._tk_queue: "queue.Queue" = queue.Queue()
 
-    # ModeManager calls start() on main thread.
+    # ModeManager calls start() on the main thread.
     def start(self, initial: Optional[UsageData]) -> None:
         self._last = initial
-        # Create a hidden Tk root so we can spawn popup Toplevels later.
+        # Hidden Tk root so we can spawn popup Toplevels later.
         self._tk_root = tk.Tk()
         self._tk_root.withdraw()
         self.icon = pystray.Icon(
@@ -1387,20 +1390,43 @@ class TrayView(View):
             title=make_tooltip(initial),
             menu=self._build_menu(),
         )
-        # pystray's run() blocks; run in a thread, and pump Tk via run_mainloop()
+        # pystray's run() blocks; run it on a daemon thread. Tk is pumped by run_mainloop().
         threading.Thread(target=self.icon.run, daemon=True).start()
 
     def run_mainloop(self):
-        # Drive Tk so popup Toplevels stay responsive; exit when stopped.
-        # ~20Hz pump is enough — popup is rare and tooltip updates use after(0).
-        while not self._stop.is_set() and self._tk_root is not None:
+        # Main thread: pump Tk and drain the cross-thread work queue.
+        while not self._stop.is_set():
+            root = self._tk_root
+            if root is None:
+                break
             try:
-                self._tk_root.update()
+                self._drain_queue()
+                root.update()
             except tk.TclError:
                 break
             self._stop.wait(0.05)
+        # Tear down Tk resources on the main thread, after the loop exits.
+        self._teardown_tk()
+
+    def _drain_queue(self):
+        while True:
+            try:
+                fn = self._tk_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                fn()
+            except Exception as e:
+                print(f"[tray queue error] {e}")
+
+    def _post(self, fn):
+        """Schedule a callable to run on the Tk main thread via run_mainloop's pump."""
+        self._tk_queue.put(fn)
 
     def stop(self) -> None:
+        # Idempotent. Only signals stop and tears down the pystray icon here;
+        # Tk teardown is deferred to run_mainloop (main thread) to avoid
+        # touching Tk from the pystray thread.
         self._stop.set()
         if self.icon:
             try:
@@ -1408,6 +1434,8 @@ class TrayView(View):
             except Exception:
                 pass
             self.icon = None
+
+    def _teardown_tk(self):
         if self._popup is not None:
             try:
                 self._popup.destroy()
@@ -1422,6 +1450,8 @@ class TrayView(View):
             self._tk_root = None
 
     def on_update(self, data: UsageData) -> None:
+        # May be called from the Poller thread. pystray icon updates are safe
+        # from any thread; Tk popup refresh is deferred to the main thread.
         self._last = data
         if self.icon:
             try:
@@ -1429,9 +1459,8 @@ class TrayView(View):
                 self.icon.title = make_tooltip(data)
             except Exception as e:
                 print(f"[tray update error] {e}")
-        # Refresh popup if it's open
-        if self._popup is not None and self._tk_root is not None:
-            self._tk_root.after(0, self._refresh_popup)
+        if self._popup is not None:
+            self._post(self._refresh_popup)
 
     # -- Menu / interactions ------------------------------------------------
 
@@ -1449,10 +1478,8 @@ class TrayView(View):
         )
 
     def _on_left_click(self, icon, item):
-        # pystray fires this on left-click of the tray icon
-        if self._tk_root is None:
-            return
-        self._tk_root.after(0, self._toggle_popup)
+        # pystray callback (pystray thread) — defer to the Tk main thread.
+        self._post(self._toggle_popup)
 
     def _toggle_popup(self):
         if self._popup is not None:
@@ -1486,7 +1513,8 @@ class TrayView(View):
                 p.destroy()
             except Exception:
                 pass
-            self._popup = None
+            if self._popup is p:
+                self._popup = None
 
         p.bind("<FocusOut>", close)
         p.bind("<Button-1>", close)
