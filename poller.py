@@ -31,16 +31,12 @@ class Poller:
 
     def _loop(self):
         while not self._stop.is_set():
-            # Wait interval OR until triggered/stopped, whichever comes first.
-            # Waiting before fetching ensures trigger() causes exactly one
-            # extra fetch and start() does not fetch eagerly.
-            self._trigger_evt.wait(timeout=self.interval)
-            self._trigger_evt.clear()
-            if self._stop.is_set():
-                break
             data = self.client.fetch()
             if data is not None:
                 try:
                     self.on_data(data)
                 except Exception as e:
                     print(f"[poller callback error] {e}")
+            # Wait interval OR until triggered/stopped, whichever comes first
+            self._trigger_evt.wait(timeout=self.interval)
+            self._trigger_evt.clear()

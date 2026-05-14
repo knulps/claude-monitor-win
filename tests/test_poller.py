@@ -40,7 +40,9 @@ def test_trigger_runs_immediately_off_thread():
     received = []
     p = Poller(client, interval=999, on_data=received.append)
     p.start()
+    time.sleep(0.05)
+    assert received == ["d1"]            # initial fetch happens eagerly on start
     p.trigger()
-    time.sleep(0.1)
+    time.sleep(0.05)
     p.stop()
-    assert received == ["d1"]
+    assert received == ["d1", "d2"]      # trigger forces the next fetch without waiting the interval
