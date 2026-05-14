@@ -1,7 +1,5 @@
 """ModeManager: owns Poller + current View, serializes mode switches."""
 
-import os
-import sys
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
@@ -89,10 +87,6 @@ class ModeManager:
     def request_switch(self, mode: str):
         if mode == self.current_mode or mode not in self.view_factories:
             return
-        # CLI → GUI check: CLI mode has no menu, but autohide/overlay/tray → cli needs a console.
-        if mode == "cli" and not self._console_attached():
-            self._show_no_console_error()
-            return
         # Stop view; loop exit triggers _do_switch
         self._pending_switch = mode
         if self.current_view:
@@ -122,19 +116,3 @@ class ModeManager:
         self.current_mode = mode
         self.current_view = self.view_factories[mode](self)
         self.current_view.start(self.last_data)
-
-    @staticmethod
-    def _console_attached() -> bool:
-        try:
-            return sys.stdout is not None and sys.stdout.isatty() and os.isatty(1)
-        except Exception:
-            return False
-
-    def _show_no_console_error(self):
-        # Best effort: show a tk messagebox if a Tk view is up
-        try:
-            import tkinter.messagebox as mb
-            from i18n import T
-            mb.showerror("CLI mode", T("cli_mode_needs_console"))
-        except Exception:
-            print("[mode] cli mode needs console")

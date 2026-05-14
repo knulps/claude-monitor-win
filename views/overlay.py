@@ -190,7 +190,6 @@ class OverlayView(View):
                          activebackground="#3A3A3C", activeforeground="white")
         switch.add_command(label=T("mode_overlay"),  command=lambda: self.manager.request_switch("overlay"))
         switch.add_command(label=T("mode_tray"),     command=lambda: self.manager.request_switch("tray"))
-        switch.add_command(label=T("mode_cli"),      command=lambda: self.manager.request_switch("cli"))
         switch.add_command(label=T("mode_autohide"), command=lambda: self.manager.request_switch("autohide"))
         menu.add_cascade(label=T("menu_switch_mode"), menu=switch)
         menu.add_separator()

@@ -15,7 +15,6 @@ TRANSLATIONS = {
         "mode_autohide":         "Autohide",
         "menu_force_show":       "Force show (lock open)",
         "cli_quit_hint":         "Press 'q' + Enter to quit",
-        "cli_mode_needs_console": "CLI mode requires python.exe (a visible console). Aborting switch.",
         "resetting_soon":        "Resetting soon",
     },
     "ko": {
@@ -32,7 +31,6 @@ TRANSLATIONS = {
         "mode_autohide":         "자동 숨김",
         "menu_force_show":       "강제 표시 (잠금)",
         "cli_quit_hint":         "종료하려면 'q' + Enter",
-        "cli_mode_needs_console": "CLI 모드는 콘솔이 있는 python.exe 가 필요합니다. 전환 취소.",
         "resetting_soon":        "곧 리셋",
     },
 }

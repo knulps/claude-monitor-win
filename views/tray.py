@@ -165,7 +165,6 @@ class TrayView(View):
             pystray.MenuItem(T("menu_switch_mode"), pystray.Menu(
                 pystray.MenuItem(T("mode_overlay"),  lambda: self.manager.request_switch("overlay")),
                 pystray.MenuItem(T("mode_tray"),     lambda: None, enabled=False),
-                pystray.MenuItem(T("mode_cli"),      lambda: self.manager.request_switch("cli")),
                 pystray.MenuItem(T("mode_autohide"), lambda: self.manager.request_switch("autohide")),
             )),
             pystray.MenuItem(T("menu_refresh"), lambda: self.manager.request_refresh()),
