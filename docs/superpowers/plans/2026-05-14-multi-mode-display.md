@@ -893,7 +893,9 @@ class OverlayView(View):
             fg=pct_color(data.seven_day_sonnet_pct),
         )
 
-        self.lbl_extra.config(text=f"Extra: {data.extra_used:.0f}/{data.extra_limit} ({data.extra_pct:.1f}%)")
+        self.lbl_extra.config(
+            text=f"Extra: {(data.extra_used or 0):.0f}/{data.extra_limit or 0} ({(data.extra_pct or 0):.1f}%)"
+        )
 
         now = datetime.now().strftime("%H:%M")
         self.lbl_updated.config(text=now)
@@ -1499,10 +1501,16 @@ class TrayView(View):
         p.attributes("-topmost", True)
         p.configure(bg="#1C1C1E")
         p.geometry("240x170")
-        # Place near bottom-right corner (above tray)
+        # Anchor near the tray icon. "above" = bottom of screen (taskbar at bottom);
+        # "below" = top of screen (taskbar at top).
         sw = p.winfo_screenwidth()
         sh = p.winfo_screenheight()
-        p.geometry(f"+{sw - 260}+{sh - 230}")
+        cfg = getattr(self.manager, "config", None)
+        position = cfg.tray_popup_position if cfg else "above"
+        if position == "below":
+            p.geometry(f"+{sw - 260}+10")
+        else:
+            p.geometry(f"+{sw - 260}+{sh - 230}")
 
         body = tk.Label(p, text=make_tooltip(self._last), bg="#1C1C1E", fg="#EBEBF5",
                         font=("Segoe UI", 10), justify="left", anchor="nw")
@@ -2078,7 +2086,7 @@ The monitor supports four interchangeable modes. The active mode is saved in `co
 
 Override the mode at launch with `--mode <name>` (e.g., `python claude_monitor.py --mode tray`). Use `--no-save-mode` to prevent runtime switches from being persisted to `config.ini`.
 
-> **CLI mode** requires a visible console — run with `python.exe`, not `pythonw.exe`. Switching to CLI from another mode is blocked (with a message) if no console is attached.
+> **CLI mode** requires a visible console — run with `python.exe`, not `pythonw.exe`. Switching to CLI from another mode is blocked (with a message) if no console is attached. CLI mode has no right-click menu, so to leave it press `q` and relaunch with another `--mode`.
 ```
 
 - [ ] **Step 4: Update FAQ — replace the "Resize / different size?" entry if it exists, otherwise add a new entry**
