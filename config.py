@@ -62,7 +62,7 @@ def save_mode(path: Path, mode: str):
     out = []
 
     section_re = re.compile(r"^\s*\[([^\]]+)\]\s*$")
-    mode_re    = re.compile(r"^(\s*mode\s*=\s*)(\S+)(.*)$")
+    mode_re    = re.compile(r"^(\s*mode\s*=[^\S\n]*)(\S*)(.*)$")
 
     for line in lines:
         sec = section_re.match(line)

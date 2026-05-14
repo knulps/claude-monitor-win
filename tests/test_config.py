@@ -76,3 +76,26 @@ def test_save_mode_adds_section_if_missing(tmp_path):
     text = p.read_text(encoding="utf-8")
     assert "[ui]" in text
     assert "mode = tray" in text
+
+
+def test_save_mode_handles_empty_value_line(tmp_path):
+    """An empty `mode =` line must be filled, not duplicated."""
+    p = tmp_path / "c.ini"
+    p.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nlanguage = en\nmode =\n", encoding="utf-8")
+    save_mode(p, "tray")
+    text = p.read_text(encoding="utf-8")
+    # Exactly one `mode` line, with the new value
+    assert text.count("mode =") == 1 or text.count("mode=") == 1
+    assert "tray" in text
+    # Config.load must not raise (no duplicate key)
+    cfg = Config.load(p)
+    assert cfg.mode == "tray"
+
+
+def test_save_mode_roundtrip(cfg_file):
+    """save_mode then Config.load yields the saved mode and other keys survive."""
+    save_mode(cfg_file, "autohide")
+    cfg = Config.load(cfg_file)
+    assert cfg.mode == "autohide"
+    assert cfg.language == "ko"
+    assert cfg.autohide_edge == "right"
