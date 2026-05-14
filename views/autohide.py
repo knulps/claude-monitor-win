@@ -31,9 +31,13 @@ class AutohideView(OverlayView):
         self._force_show = False
         self._hide_after_id = None
         self._poll_after_id = None
+        # Created in start() once self.root exists; reused across _show_menu calls
+        # so it isn't garbage-collected (which would unset its Tcl variable).
+        self._force_show_var = None
 
     def start(self, initial: Optional[UsageData]) -> None:
         super().start(initial)
+        self._force_show_var = tk.BooleanVar(self.root, value=self._force_show)
         # Dock immediately, before hover polling starts, so _slide_in/_slide_out
         # always have _geom_hidden/_geom_shown available.
         self._dock_initial()
@@ -66,9 +70,10 @@ class AutohideView(OverlayView):
         switch.add_command(label=T("mode_autohide"), command=lambda: self.manager.request_switch("autohide"))
         menu.add_cascade(label=T("menu_switch_mode"), menu=switch)
         menu.add_separator()
+        self._force_show_var.set(self._force_show)
         menu.add_checkbutton(label=T("menu_force_show"),
                              command=self._toggle_force_show,
-                             variable=tk.BooleanVar(value=self._force_show))
+                             variable=self._force_show_var)
         menu.add_command(label=T("menu_refresh"), command=self.manager.request_refresh)
         menu.add_separator()
         menu.add_command(label=T("menu_quit"), command=self.manager.request_quit)
@@ -78,6 +83,10 @@ class AutohideView(OverlayView):
         self._force_show = not self._force_show
         if self._force_show:
             self._slide_in(force=True)
+        elif not self._hover and self._shown:
+            # Force show turned off while the cursor is away — schedule the hide
+            # the hover state machine would otherwise miss (it only acts on edges).
+            self._schedule_hide()
 
     def _dock_initial(self):
         self._geom_hidden = self._compute_hidden_geom()
