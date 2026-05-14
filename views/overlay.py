@@ -149,7 +149,9 @@ class OverlayView(View):
             fg=pct_color(data.seven_day_sonnet_pct),
         )
 
-        self.lbl_extra.config(text=f"Extra: {data.extra_used:.0f}/{data.extra_limit} ({data.extra_pct:.1f}%)")
+        self.lbl_extra.config(
+            text=f"Extra: {(data.extra_used or 0):.0f}/{data.extra_limit or 0} ({(data.extra_pct or 0):.1f}%)"
+        )
 
         now = datetime.now().strftime("%H:%M")
         self.lbl_updated.config(text=now)

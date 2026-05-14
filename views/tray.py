@@ -196,10 +196,16 @@ class TrayView(View):
         p.attributes("-topmost", True)
         p.configure(bg="#1C1C1E")
         p.geometry("240x170")
-        # Place near bottom-right corner (above tray)
+        # Anchor near the tray icon. "above" = bottom of screen (taskbar at bottom);
+        # "below" = top of screen (taskbar at top).
         sw = p.winfo_screenwidth()
         sh = p.winfo_screenheight()
-        p.geometry(f"+{sw - 260}+{sh - 230}")
+        cfg = getattr(self.manager, "config", None)
+        position = cfg.tray_popup_position if cfg else "above"
+        if position == "below":
+            p.geometry(f"+{sw - 260}+10")
+        else:
+            p.geometry(f"+{sw - 260}+{sh - 230}")
 
         body = tk.Label(p, text=make_tooltip(self._last), bg="#1C1C1E", fg="#EBEBF5",
                         font=("Segoe UI", 10), justify="left", anchor="nw")
