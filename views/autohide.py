@@ -1,11 +1,43 @@
 """Autohide mode: docks the overlay to a screen edge; slides in on hover."""
 
+import ctypes
+from ctypes import wintypes
 import tkinter as tk
 from typing import Optional
 
 from i18n import T
 from usage_client import UsageData
 from views.overlay import OverlayView
+
+
+def _compute_geoms(mon, edge, w, h, peek):
+    """Return (hidden_geom, shown_geom) Tk geometry strings for a w x h window
+    docked to `edge` of monitor work-area rect `mon` = (left, top, right, bottom).
+
+    Pure function so the multi-monitor math can be unit-tested.
+    """
+    left, top, right, bottom = mon
+    y_band = bottom - h - 8    # vertical placement for left/right edges
+    x_band = right - w - 16    # horizontal placement for top/bottom edges
+    if edge == "left":
+        return (f"{w}x{h}+{left - w + peek}+{y_band}",
+                f"{w}x{h}+{left + 4}+{y_band}")
+    if edge == "top":
+        return (f"{w}x{h}+{x_band}+{top - h + peek}",
+                f"{w}x{h}+{x_band}+{top + 4}")
+    if edge == "bottom":
+        return (f"{w}x{h}+{x_band}+{bottom - peek}",
+                f"{w}x{h}+{x_band}+{bottom - h - 8}")
+    # right (default)
+    return (f"{w}x{h}+{right - peek}+{y_band}",
+            f"{w}x{h}+{right - w - 4}+{y_band}")
+
+
+class _MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD),
+                ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT),
+                ("dwFlags", wintypes.DWORD)]
 
 
 class AutohideView(OverlayView):
@@ -31,6 +63,7 @@ class AutohideView(OverlayView):
         self._force_show = False
         self._hide_after_id = None
         self._poll_after_id = None
+        self._mon_rect = None    # work-area rect of the monitor we docked to
         # Created in start() once self.root exists; reused across _show_menu calls
         # so it isn't garbage-collected (which would unset its Tcl variable).
         self._force_show_var = None
@@ -89,34 +122,34 @@ class AutohideView(OverlayView):
             self._schedule_hide()
 
     def _dock_initial(self):
-        self._geom_hidden = self._compute_hidden_geom()
-        self._geom_shown  = self._compute_shown_geom()
+        self._mon_rect = self._current_monitor_rect()
+        self._geom_hidden, self._geom_shown = _compute_geoms(
+            self._mon_rect, self.EDGE, self.W, self.H, self.PEEK)
         self.root.geometry(self._geom_hidden)
         self._shown = False
 
-    def _compute_hidden_geom(self):
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        if self.EDGE == "right":
-            return f"{self.W}x{self.H}+{sw - self.PEEK}+{sh - self.H - 56}"
-        if self.EDGE == "left":
-            return f"{self.W}x{self.H}+{self.PEEK - self.W}+{sh - self.H - 56}"
-        if self.EDGE == "top":
-            return f"{self.W}x{self.H}+{sw - self.W - 16}+{self.PEEK - self.H}"
-        # bottom
-        return f"{self.W}x{self.H}+{sw - self.W - 16}+{sh - self.PEEK}"
+    def _current_monitor_rect(self):
+        """Work-area rect (left, top, right, bottom) of the monitor the window sits on.
 
-    def _compute_shown_geom(self):
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        if self.EDGE == "right":
-            return f"{self.W}x{self.H}+{sw - self.W - 4}+{sh - self.H - 56}"
-        if self.EDGE == "left":
-            return f"{self.W}x{self.H}+4+{sh - self.H - 56}"
-        if self.EDGE == "top":
-            return f"{self.W}x{self.H}+{sw - self.W - 16}+4"
-        # bottom
-        return f"{self.W}x{self.H}+{sw - self.W - 16}+{sh - self.H - 56}"
+        Uses the window's current center point; falls back to the primary monitor.
+        """
+        try:
+            cx = self.root.winfo_rootx() + self.W // 2
+            cy = self.root.winfo_rooty() + self.H // 2
+            user32 = ctypes.windll.user32
+            user32.MonitorFromPoint.restype = wintypes.HMONITOR
+            user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+            user32.GetMonitorInfoW.restype = wintypes.BOOL
+            user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.c_void_p]
+            hmon = user32.MonitorFromPoint(wintypes.POINT(cx, cy), 2)  # MONITOR_DEFAULTTONEAREST
+            mi = _MONITORINFO()
+            mi.cbSize = ctypes.sizeof(_MONITORINFO)
+            if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+                r = mi.rcWork
+                return (r.left, r.top, r.right, r.bottom)
+        except Exception:
+            pass
+        return (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
 
     def _poll_hover(self):
         if not self.root:
@@ -144,16 +177,15 @@ class AutohideView(OverlayView):
         rh = self.H
         if self._shown:
             return rx <= x <= rx + rw and ry <= y <= ry + rh
-        # Hidden state — sensitive area is the peek strip
+        # Hidden state — sensitive area is the peek strip on the docked monitor's edge
+        left, top, right, bottom = self._mon_rect or (0, 0, rx + rw, ry + rh)
         if self.EDGE == "right":
-            sw = self.root.winfo_screenwidth()
-            return sw - self.PEEK <= x <= sw and ry <= y <= ry + rh
+            return right - self.PEEK <= x <= right and ry <= y <= ry + rh
         if self.EDGE == "left":
-            return 0 <= x <= self.PEEK and ry <= y <= ry + rh
+            return left <= x <= left + self.PEEK and ry <= y <= ry + rh
         if self.EDGE == "top":
-            return rx <= x <= rx + rw and 0 <= y <= self.PEEK
-        sh = self.root.winfo_screenheight()
-        return rx <= x <= rx + rw and sh - self.PEEK <= y <= sh
+            return rx <= x <= rx + rw and top <= y <= top + self.PEEK
+        return rx <= x <= rx + rw and bottom - self.PEEK <= y <= bottom
 
     def _slide_in(self, force=False):
         if self._shown and not force:
@@ -199,7 +231,7 @@ class AutohideView(OverlayView):
 
     @staticmethod
     def _parse_pos(geom):
-        # "WxH+X+Y" -> (X, Y)
+        # "WxH+X+Y" -> (X, Y); handles negative coords like "WxH+-227+0"
         try:
             _, pos = geom.split("+", 1)
             x_str, y_str = pos.split("+")
