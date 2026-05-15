@@ -1,13 +1,17 @@
 [claude]
-# F12 → Network → click /usage request → Request Headers → copy the full cookie value
-cookies =
-
-# F12 → Network → the /organizations/{UUID}/ segment in the URL
-org_id  =
-
-# API refresh interval (seconds)
+cookies       = sessionKey=sk-ant-...; cf_clearance=...; ...
+org_id        = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 poll_interval = 60
 
 [ui]
-# UI language: en | ko
-language = en
+language = en              ; en | ko
+mode     = overlay         ; overlay | tray | cli | autohide
+
+[tray]
+popup_position = above     ; above | below
+
+[autohide]
+edge          = bottom     ; bottom | top | left | right
+peek_pixels   = 3
+slide_ms      = 110
+hide_delay_ms = 1500
