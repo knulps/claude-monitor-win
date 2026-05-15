@@ -1,4 +1,4 @@
-"""Config file loading + targeted line-based saving of the `mode` key."""
+"""Config file loading + targeted line-based saving of INI keys."""
 
 import configparser
 import re
@@ -45,57 +45,59 @@ class Config:
 
 
 def save_mode(path: Path, mode: str):
-    """Rewrite [ui] mode = <mode> in-place, preserving comments and ordering.
+    """Persist [ui] mode = <mode>, preserving comments and ordering."""
+    _set_ini_key(Path(path), section="ui", key="mode", value=mode)
+
+
+def _set_ini_key(path: Path, section: str, key: str, value: str):
+    """Rewrite [section] key = <value> in-place, preserving comments and ordering.
 
     configparser's write() would clobber inline comments, so we patch the file
-    line-by-line. If [ui] or `mode` does not exist, append them.
+    line-by-line. If [section] or `key` does not exist, append them.
     """
-    path = Path(path)
     if not path.exists():
-        path.write_text(f"[ui]\nmode = {mode}\n", encoding="utf-8")
+        path.write_text(f"[{section}]\n{key} = {value}\n", encoding="utf-8")
         return
 
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    in_ui = False
-    ui_seen = False
-    mode_written = False
+    in_section = False
+    section_seen = False
+    key_written = False
     out = []
 
     section_re = re.compile(r"^\s*\[([^\]]+)\]\s*$")
-    mode_re    = re.compile(r"^(\s*mode\s*=[^\S\n]*)(\S*)(.*)$")
+    key_re = re.compile(rf"^(\s*{re.escape(key)}\s*=[^\S\n]*)(\S*)(.*)$")
 
     for line in lines:
         sec = section_re.match(line)
         if sec:
-            # Leaving [ui] without writing mode -> append before this section
-            if in_ui and not mode_written:
-                out.append(f"mode = {mode}\n")
-                mode_written = True
-            in_ui = sec.group(1).strip().lower() == "ui"
-            if in_ui:
-                ui_seen = True
+            if in_section and not key_written:
+                out.append(f"{key} = {value}\n")
+                key_written = True
+            in_section = sec.group(1).strip().lower() == section.lower()
+            if in_section:
+                section_seen = True
             out.append(line)
             continue
 
-        if in_ui and not mode_written:
-            m = mode_re.match(line)
+        if in_section and not key_written:
+            m = key_re.match(line)
             if m:
                 prefix, _old, tail = m.groups()
-                out.append(f"{prefix}{mode}{tail}\n" if not tail.endswith("\n") else f"{prefix}{mode}{tail}")
-                mode_written = True
+                out.append(f"{prefix}{value}{tail}\n" if not tail.endswith("\n") else f"{prefix}{value}{tail}")
+                key_written = True
                 continue
         out.append(line)
 
-    if in_ui and not mode_written:
-        # File ended inside [ui] without a mode key
+    if in_section and not key_written:
         if out and not out[-1].endswith("\n"):
             out[-1] += "\n"
-        out.append(f"mode = {mode}\n")
-        mode_written = True
-    elif not ui_seen:
+        out.append(f"{key} = {value}\n")
+        key_written = True
+    elif not section_seen:
         if out and not out[-1].endswith("\n"):
             out[-1] += "\n"
-        out.append("\n[ui]\n")
-        out.append(f"mode = {mode}\n")
+        out.append(f"\n[{section}]\n")
+        out.append(f"{key} = {value}\n")
 
     path.write_text("".join(out), encoding="utf-8")
