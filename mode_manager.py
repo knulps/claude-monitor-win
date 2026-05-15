@@ -13,17 +13,35 @@ class ModeManager:
         view_factories: Dict[str, Callable],
         poller,
         save_mode: bool,
+        companion_factories: Optional[Dict[str, Callable]] = None,
+        save_tray_companion: Optional[Callable] = None,
+        initial_companion_flag: bool = False,
     ):
         self.cfg_path = Path(cfg_path)
         self.view_factories = view_factories
+        self.companion_factories = companion_factories or {}
         self.poller = poller
         self.save_mode = save_mode
+        self.save_tray_companion = save_tray_companion
+        self.tray_companion = bool(initial_companion_flag)
 
         self.current_mode: Optional[str] = None
         self.current_view = None
+        self.current_companion = None  # type: Optional[object]  # holds a View instance
         self.last_data = None
         self._quit_requested = False
         self._pending_switch: Optional[str] = None
+
+    # -- Companion helpers -------------------------------------------------
+
+    def _should_show_companion(self) -> bool:
+        """Return True only when the companion overlay should be visible.
+
+        Conditions: tray_companion flag is set AND the active mode is one that
+        renders a floating window (overlay / autohide).  Tray and CLI modes
+        have no on-screen window, so a companion makes no sense there.
+        """
+        return self.tray_companion and self.current_mode in ("overlay", "autohide")
 
     # -- Lifecycle ---------------------------------------------------------
 

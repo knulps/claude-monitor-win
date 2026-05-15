@@ -159,3 +159,38 @@ def test_on_poll_data_skips_stale_tk_view_callback(tmp_path):
     mgr._do_switch("tray")
     fn()  # stale callback fires
     assert old.updates == []          # stale view was NOT updated
+
+
+# ---------------------------------------------------------------------------
+# Helper reused by Tasks 5, 6, 7, 8, 9
+# ---------------------------------------------------------------------------
+
+def _make_mgr(tmp_path, **kwargs):
+    cfg = tmp_path / "c.ini"
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    defaults = dict(
+        cfg_path=cfg,
+        view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
+        poller=None,
+        save_mode=True,
+    )
+    defaults.update(kwargs)
+    return ModeManager(**defaults), cfg
+
+
+def test_should_show_companion_truth_table(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    cases = [
+        ("overlay",  True,  True),
+        ("autohide", True,  True),
+        ("tray",     True,  False),
+        ("cli",      True,  False),
+        ("overlay",  False, False),
+        ("autohide", False, False),
+        ("tray",     False, False),
+        ("cli",      False, False),
+    ]
+    for mode, flag, expected in cases:
+        mgr.current_mode = mode
+        mgr.tray_companion = flag
+        assert mgr._should_show_companion() is expected, f"{mode=} {flag=}"
