@@ -10,27 +10,33 @@ from usage_client import UsageData
 from views.overlay import OverlayView
 
 
-def _compute_geoms(mon, edge, w, h, peek):
+def _compute_geoms(work, full, edge, w, h, peek):
     """Return (hidden_geom, shown_geom) Tk geometry strings for a w x h window
-    docked to `edge` of monitor work-area rect `mon` = (left, top, right, bottom).
+    docked to `edge`.
 
-    Pure function so the multi-monitor math can be unit-tested.
+    `work` and `full` are (left, top, right, bottom) tuples for the monitor's
+    work area and full physical bounds. The docking edge uses `full` so the
+    hidden window slides past the taskbar / off-screen; the perpendicular band
+    and the shown position use `work` so a shown window never covers the taskbar.
+
+    Pure function so the multi-monitor / taskbar math can be unit-tested.
     """
-    left, top, right, bottom = mon
-    y_band = bottom - h - 8    # vertical placement for left/right edges
-    x_band = right - w - 16    # horizontal placement for top/bottom edges
+    wl, wt, wr, wb = work
+    fl, ft, fr, fb = full
+    y_band = wb - h - 8    # vertical placement for left/right edges
+    x_band = wr - w - 16   # horizontal placement for top/bottom edges
     if edge == "left":
-        return (f"{w}x{h}+{left - w + peek}+{y_band}",
-                f"{w}x{h}+{left + 4}+{y_band}")
+        return (f"{w}x{h}+{fl - w + peek}+{y_band}",
+                f"{w}x{h}+{wl + 4}+{y_band}")
     if edge == "top":
-        return (f"{w}x{h}+{x_band}+{top - h + peek}",
-                f"{w}x{h}+{x_band}+{top + 4}")
+        return (f"{w}x{h}+{x_band}+{ft - h + peek}",
+                f"{w}x{h}+{x_band}+{wt + 4}")
     if edge == "bottom":
-        return (f"{w}x{h}+{x_band}+{bottom - peek}",
-                f"{w}x{h}+{x_band}+{bottom - h - 8}")
+        return (f"{w}x{h}+{x_band}+{fb - peek}",
+                f"{w}x{h}+{x_band}+{wb - h - 8}")
     # right (default)
-    return (f"{w}x{h}+{right - peek}+{y_band}",
-            f"{w}x{h}+{right - w - 4}+{y_band}")
+    return (f"{w}x{h}+{fr - peek}+{y_band}",
+            f"{w}x{h}+{wr - w - 4}+{y_band}")
 
 
 class _MONITORINFO(ctypes.Structure):
@@ -63,7 +69,8 @@ class AutohideView(OverlayView):
         self._force_show = False
         self._hide_after_id = None
         self._poll_after_id = None
-        self._mon_rect = None    # work-area rect of the monitor we docked to
+        self._work_rect = None   # work area of the monitor we docked to
+        self._full_rect = None   # full physical bounds of that monitor
         # Created in start() once self.root exists; reused across _show_menu calls
         # so it isn't garbage-collected (which would unset its Tcl variable).
         self._force_show_var = None
@@ -121,16 +128,16 @@ class AutohideView(OverlayView):
             self._schedule_hide()
 
     def _dock_initial(self):
-        self._mon_rect = self._current_monitor_rect()
+        self._work_rect, self._full_rect = self._current_monitor_rects()
         self._geom_hidden, self._geom_shown = _compute_geoms(
-            self._mon_rect, self.EDGE, self.W, self.H, self.PEEK)
+            self._work_rect, self._full_rect, self.EDGE, self.W, self.H, self.PEEK)
         self.root.geometry(self._geom_hidden)
         self._shown = False
 
-    def _current_monitor_rect(self):
-        """Work-area rect (left, top, right, bottom) of the monitor the window sits on.
+    def _current_monitor_rects(self):
+        """Return (work_rect, full_rect) of the monitor the window currently sits on.
 
-        Uses the window's current center point; falls back to the primary monitor.
+        Uses the window's center point; falls back to the primary monitor.
         """
         try:
             cx = self.root.winfo_rootx() + self.W // 2
@@ -144,11 +151,15 @@ class AutohideView(OverlayView):
             mi = _MONITORINFO()
             mi.cbSize = ctypes.sizeof(_MONITORINFO)
             if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
-                r = mi.rcWork
-                return (r.left, r.top, r.right, r.bottom)
+                w = mi.rcWork
+                m = mi.rcMonitor
+                return ((w.left, w.top, w.right, w.bottom),
+                        (m.left, m.top, m.right, m.bottom))
         except Exception:
             pass
-        return (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        return ((0, 0, sw, sh), (0, 0, sw, sh))
 
     def _poll_hover(self):
         if not self.root:
@@ -176,15 +187,15 @@ class AutohideView(OverlayView):
         rh = self.H
         if self._shown:
             return rx <= x <= rx + rw and ry <= y <= ry + rh
-        # Hidden state — sensitive area is the peek strip on the docked monitor's edge
-        left, top, right, bottom = self._mon_rect or (0, 0, rx + rw, ry + rh)
+        # Hidden state — the peek strip sits on the FULL monitor edge.
+        fl, ft, fr, fb = self._full_rect or (0, 0, rx + rw, ry + rh)
         if self.EDGE == "right":
-            return right - self.PEEK <= x <= right and ry <= y <= ry + rh
+            return fr - self.PEEK <= x <= fr and ry <= y <= ry + rh
         if self.EDGE == "left":
-            return left <= x <= left + self.PEEK and ry <= y <= ry + rh
+            return fl <= x <= fl + self.PEEK and ry <= y <= ry + rh
         if self.EDGE == "top":
-            return rx <= x <= rx + rw and top <= y <= top + self.PEEK
-        return rx <= x <= rx + rw and bottom - self.PEEK <= y <= bottom
+            return rx <= x <= rx + rw and ft <= y <= ft + self.PEEK
+        return rx <= x <= rx + rw and fb - self.PEEK <= y <= fb
 
     def _slide_in(self, force=False):
         if self._shown and not force:
