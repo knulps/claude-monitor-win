@@ -279,3 +279,24 @@ def test_sync_companion_leaves_state_clean_when_start_fails(tmp_path):
     mgr.current_mode = "overlay"
     mgr._sync_companion()  # should not raise; should leave current_companion as None
     assert mgr.current_companion is None
+
+
+# ---------------------------------------------------------------------------
+# Task 7: on_poll_data fans out to companion
+# ---------------------------------------------------------------------------
+
+def test_on_poll_data_fans_out_to_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    # start_initial doesn't auto-sync companion until Task 8 wires it in,
+    # so set up companion explicitly here.
+    mgr.start_initial("overlay")
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()
+    assert mgr.current_companion is not None  # sanity from Task 6
+    mgr.on_poll_data("D1")
+    assert mgr.current_view.updates == ["D1"]
+    assert mgr.current_companion.updates == ["D1"]

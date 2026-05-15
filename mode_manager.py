@@ -112,7 +112,16 @@ class ModeManager:
 
     def on_poll_data(self, data):
         self.last_data = data
-        view = self.current_view
+        for view in (self.current_view, self.current_companion):
+            self._dispatch_to_view(view, data)
+
+    def _dispatch_to_view(self, view, data):
+        """Dispatch poll data to a single view (main or companion).
+
+        Tk views are marshalled onto the main thread via root.after.
+        The stale-view guard accepts both current_view and current_companion
+        so that a view replaced by _do_switch is silently skipped.
+        """
         if view is None:
             return
         root = getattr(view, "root", None)
@@ -121,14 +130,19 @@ class ModeManager:
             # swapped out between scheduling and running is skipped, and never fall
             # through to a direct cross-thread call if scheduling fails.
             try:
-                root.after(0, lambda v=view: v.on_update(data) if v is self.current_view else None)
+                root.after(
+                    0,
+                    lambda v=view: v.on_update(data)
+                    if v in (self.current_view, self.current_companion)
+                    else None,
+                )
             except Exception:
                 # root was destroyed mid-switch; the next poll reaches the new view.
                 pass
             return
         # Non-Tk view (cli/tray), or a Tk view already stopped (root is None).
-        # Skip if it is no longer the current view so a stale view isn't touched.
-        if view is self.current_view:
+        # Skip if it is no longer current so a stale view isn't touched.
+        if view in (self.current_view, self.current_companion):
             view.on_update(data)
 
     # -- Public requests from views ----------------------------------------
