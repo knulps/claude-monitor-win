@@ -17,6 +17,7 @@ def cfg_file(tmp_path):
         [ui]
         language = ko
         mode     = overlay         ; overlay | tray | cli | autohide
+        tray_companion = false
 
         [tray]
         popup_position = above
@@ -42,6 +43,7 @@ def test_load_basic_values(cfg_file):
     assert cfg.autohide_peek_pixels == 3
     assert cfg.autohide_slide_ms == 150
     assert cfg.autohide_hide_delay_ms == 1500
+    assert cfg.tray_companion is False
 
 
 def test_mode_fallback_when_missing(tmp_path):
