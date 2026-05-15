@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from config import save_mode as cfg_save_mode
+from views.base import View
 
 
 class ModeManager:
@@ -27,7 +28,7 @@ class ModeManager:
 
         self.current_mode: Optional[str] = None
         self.current_view = None
-        self.current_companion = None  # type: Optional[object]  # holds a View instance
+        self.current_companion: Optional[View] = None
         self.last_data = None
         self._quit_requested = False
         self._pending_switch: Optional[str] = None
@@ -35,7 +36,7 @@ class ModeManager:
     # -- Companion helpers -------------------------------------------------
 
     def _should_show_companion(self) -> bool:
-        """Return True only when the companion overlay should be visible.
+        """Return True only when the companion view should be visible.
 
         Conditions: tray_companion flag is set AND the active mode is one that
         renders a floating window (overlay / autohide).  Tray and CLI modes
