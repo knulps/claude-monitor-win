@@ -359,3 +359,59 @@ def test_on_poll_data_skips_stale_companion_tk_callback(tmp_path):
     mgr.current_companion = None
     fn()  # stale callback fires
     assert companion.updates == []  # must be a no-op
+
+
+# ---------------------------------------------------------------------------
+# Task 9: View.focus() no-op + ModeManager.request_focus_main_view
+# ---------------------------------------------------------------------------
+
+def test_request_focus_main_view_calls_focus_on_current(tmp_path):
+    class FocusView(FakeView):
+        def __init__(self, manager):
+            super().__init__(manager)
+            self.focused = 0
+
+        def focus(self):
+            self.focused += 1
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": FocusView, "tray": FocusView, "cli": FocusView, "autohide": FocusView},
+    )
+    mgr.start_initial("overlay")
+    mgr.request_focus_main_view()
+    assert mgr.current_view.focused == 1
+
+
+def test_request_focus_main_view_safe_when_no_focus_method(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    mgr.start_initial("overlay")
+    # FakeView has no focus(); should not raise.
+    mgr.request_focus_main_view()
+
+
+def test_request_focus_main_view_swallows_focus_exception(tmp_path):
+    class ErrorFocusView(FakeView):
+        def __init__(self, manager):
+            super().__init__(manager)
+            self.focused = 0
+
+        def focus(self):
+            self.focused += 1
+            raise RuntimeError("window destroyed")
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": ErrorFocusView, "tray": ErrorFocusView, "cli": ErrorFocusView, "autohide": ErrorFocusView},
+    )
+    mgr.start_initial("overlay")
+    # focus() raises; request_focus_main_view() must not propagate.
+    mgr.request_focus_main_view()
+    assert mgr.current_view.focused == 1
+
+
+def test_request_focus_main_view_safe_when_no_current_view(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    mgr.current_view = None
+    # Should not raise even with no current view.
+    mgr.request_focus_main_view()

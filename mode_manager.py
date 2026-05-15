@@ -171,6 +171,22 @@ class ModeManager:
         if self.current_view:
             self.current_view.stop()
 
+    def request_focus_main_view(self):
+        """Ask the current view to bring itself to the foreground.
+
+        Calls view.focus() if the method exists and is callable.
+        Any exception from focus() is caught and logged so callers are not disrupted.
+        """
+        view = self.current_view
+        if view is None:
+            return
+        focus = getattr(view, "focus", None)
+        if callable(focus):
+            try:
+                focus()
+            except Exception as e:
+                print(f"[focus error] {e}")
+
     # -- Internal switch -----------------------------------------------------
 
     def _do_switch(self, mode: str):
