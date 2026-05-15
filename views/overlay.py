@@ -180,6 +180,17 @@ class OverlayView(View):
         y = self.root.winfo_y() + e.y - self._dy
         self.root.geometry(f"+{x}+{y}")
 
+    def focus(self) -> None:
+        if not self.root:
+            return
+        try:
+            self.root.attributes("-topmost", False)
+            self.root.attributes("-topmost", True)
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
+
     def _bind_menu(self):
         self.root.bind("<Button-3>", self._show_menu)
 
