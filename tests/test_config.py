@@ -2,7 +2,7 @@ import textwrap
 import pytest
 from pathlib import Path
 
-from config import Config, save_mode
+from config import Config, save_mode, save_tray_companion
 
 
 @pytest.fixture
@@ -128,3 +128,29 @@ def test_tray_companion_loads_false_explicit(tmp_path):
     )
     cfg = Config.load(p)
     assert cfg.tray_companion is False
+
+
+def test_save_tray_companion_round_trip(cfg_file):
+    save_tray_companion(cfg_file, True)
+    cfg = Config.load(cfg_file)
+    assert cfg.tray_companion is True
+    save_tray_companion(cfg_file, False)
+    cfg = Config.load(cfg_file)
+    assert cfg.tray_companion is False
+
+
+def test_save_tray_companion_preserves_mode_and_comments(cfg_file):
+    save_tray_companion(cfg_file, True)
+    text = cfg_file.read_text(encoding="utf-8")
+    assert "tray_companion = true" in text
+    assert "; overlay | tray | cli | autohide" in text  # comment on mode line preserved
+    assert "language = ko" in text
+
+
+def test_save_tray_companion_adds_section_if_missing(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text("[claude]\ncookies=a\norg_id=b\n", encoding="utf-8")
+    save_tray_companion(p, True)
+    text = p.read_text(encoding="utf-8")
+    assert "[ui]" in text
+    assert "tray_companion = true" in text

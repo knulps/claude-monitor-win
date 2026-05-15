@@ -103,3 +103,8 @@ def _set_ini_key(path: Path, section: str, key: str, value: str):
         out.append(f"{key} = {value}\n")
 
     path.write_text("".join(out), encoding="utf-8")
+
+
+def save_tray_companion(path: Path, value: bool):
+    """Persist [ui] tray_companion = <true|false>."""
+    _set_ini_key(Path(path), section="ui", key="tray_companion", value="true" if value else "false")
