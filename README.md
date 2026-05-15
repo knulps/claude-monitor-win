@@ -72,6 +72,19 @@ pip install curl_cffi pystray Pillow
 
 > `pystray` + `Pillow` enable the Tray mode. `tkinter` ships with the official Python for Windows installer.
 
+### Build a standalone executable (optional)
+
+To get a single `claude_monitor.exe` — no Python install needed to run it, and it
+shows up as "Claude Usage Monitor" in Windows' notification-area settings:
+
+```bash
+pip install pyinstaller
+pyinstaller claude_monitor.spec
+```
+
+The executable is written to `dist/claude_monitor.exe`. It's built with a console
+so CLI mode works; GUI modes hide the console window automatically.
+
 ## Configuration
 
 Credentials are read from `config.ini`. Copy the template and fill in your values:

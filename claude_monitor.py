@@ -17,7 +17,13 @@ from views.cli import CLIView
 from views.overlay import OverlayView
 from views.tray import TrayView
 
-CFG_PATH = Path(__file__).parent / "config.ini"
+# When frozen by PyInstaller (--onefile), __file__ points into the temporary
+# extraction dir; resolve config.ini next to the actual exe instead.
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
+CFG_PATH = APP_DIR / "config.ini"
 
 
 def parse_args():
@@ -26,6 +32,20 @@ def parse_args():
     ap.add_argument("--no-save-mode", action="store_true",
                     help="Don't persist mode changes back to config.ini")
     return ap.parse_args()
+
+
+def _hide_console_for_frozen_gui(start_mode):
+    """A --console build always spawns a console window. When the packaged exe
+    runs in a GUI mode, hide it; CLI mode keeps it. No-op when run as a script."""
+    if not getattr(sys, "frozen", False) or start_mode == "cli":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    except Exception:
+        pass
 
 
 def main():
@@ -45,6 +65,7 @@ def main():
 
     set_language(cfg.language)
     start_mode = args.mode or cfg.mode
+    _hide_console_for_frozen_gui(start_mode)
 
     client = UsageClient(org_id=cfg.org_id, cookies=cfg.cookies)
     mgr = ModeManager(

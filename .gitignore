@@ -4,3 +4,5 @@ __pycache__/
 claude_raw.json
 config.ini
 .claude/
+build/
+dist/
