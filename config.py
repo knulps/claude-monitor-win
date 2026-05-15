@@ -15,6 +15,7 @@ class Config:
     poll_interval: int
     language: str
     mode: str
+    tray_companion: bool
     tray_popup_position: str
     autohide_edge: str
     autohide_peek_pixels: int
@@ -36,6 +37,7 @@ class Config:
             poll_interval=cp.getint("claude", "poll_interval", fallback=60),
             language=cp.get("ui", "language", fallback="en").strip().lower(),
             mode=mode,
+            tray_companion=cp.getboolean("ui", "tray_companion", fallback=False),
             tray_popup_position=cp.get("tray", "popup_position", fallback="above"),
             autohide_edge=cp.get("autohide", "edge", fallback="bottom"),
             autohide_peek_pixels=cp.getint("autohide", "peek_pixels", fallback=3),

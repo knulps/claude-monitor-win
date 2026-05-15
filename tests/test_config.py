@@ -99,3 +99,30 @@ def test_save_mode_roundtrip(cfg_file):
     assert cfg.mode == "autohide"
     assert cfg.language == "ko"
     assert cfg.autohide_edge == "right"
+
+
+def test_tray_companion_defaults_false_when_missing(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    cfg = Config.load(p)
+    assert cfg.tray_companion is False
+
+
+def test_tray_companion_loads_true(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text(
+        "[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\ntray_companion = true\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(p)
+    assert cfg.tray_companion is True
+
+
+def test_tray_companion_loads_false_explicit(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text(
+        "[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\ntray_companion = false\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(p)
+    assert cfg.tray_companion is False
