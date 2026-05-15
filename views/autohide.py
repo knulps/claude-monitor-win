@@ -158,6 +158,25 @@ class AutohideView(OverlayView):
             # the hover state machine would otherwise miss (it only acts on edges).
             self._schedule_hide()
 
+    def focus(self) -> None:
+        """Companion left-click: ensure the docked panel is visible.
+
+        If not already force-shown, slide in and lock open. Caller can later
+        toggle force-show off via the right-click menu.
+        """
+        if not self.root:
+            return
+        try:
+            if not self._force_show:
+                self._force_show = True
+                if self._force_show_var is not None:
+                    self._force_show_var.set(True)
+                self._slide_in(force=True)
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
+
     def _dock_initial(self):
         self._work_rect, self._full_rect = self._current_monitor_rects()
         self._geom_hidden, self._geom_shown = _compute_geoms(
