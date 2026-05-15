@@ -110,6 +110,9 @@ class TrayView(View):
             else:
                 self._tk_root = borrowed
                 self._owns_root = False
+            # Companion lives inside the main view's mainloop, so schedule
+            # the cross-thread drain ourselves — no run_mainloop will pump it.
+            self._schedule_companion_drain()
         else:
             # Hidden Tk root so we can spawn popup Toplevels later.
             self._tk_root = tk.Tk()
@@ -122,14 +125,14 @@ class TrayView(View):
             title=make_tooltip(initial),
             menu=self._build_menu(),
         )
-        # pystray's run() blocks; run it on a daemon thread. Tk is pumped by run_mainloop().
+        # pystray's run() blocks; run it on a daemon thread. Tk is pumped by
+        # run_mainloop() (standalone) or the main view (companion).
         threading.Thread(target=self.icon.run, daemon=True).start()
 
     def run_mainloop(self):
         if self.companion:
-            # The main view drives the Tk loop. Pump our queue via root.after.
-            # Schedule a drain tick so cross-thread work still flows.
-            self._schedule_companion_drain()
+            # Companion is pumped by the main view's mainloop. The drain tick
+            # is scheduled in start(), so there's nothing to do here.
             return
         # Standalone: pump Tk + drain queue ourselves.
         while not self._stop.is_set():
@@ -184,14 +187,22 @@ class TrayView(View):
                 pass
             self.icon = None
         if self.companion:
-            # We do not own the root; just drop the popup if any (must run on Tk thread).
+            # Tear down the popup (if any) and either destroy our fallback root
+            # or just drop the borrowed reference.
             if self._popup is not None and self._tk_root is not None:
                 try:
                     self._popup.destroy()
                 except Exception:
                     pass
                 self._popup = None
-            # Drop the borrowed reference; do NOT destroy.
+            if self._owns_root:
+                # Fallback case: we created our own root, so destroy it now —
+                # run_mainloop won't be entered for the companion path.
+                try:
+                    if self._tk_root is not None:
+                        self._tk_root.destroy()
+                except Exception:
+                    pass
             self._tk_root = None
 
     def _teardown_tk(self):
