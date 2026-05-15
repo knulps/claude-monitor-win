@@ -15,11 +15,13 @@ from views.base import View
 from views.overlay import pct_color, time_until
 
 ICON_SIZE = 64  # Rendered at 64 for clarity; Windows downsizes to 16/24/32
-ICON_BG = "#1C1C1E"  # dark background — high contrast against the status-colored digits
+ICON_BG = "#000000"  # fully black — maximum contrast against the status-colored digits
 
 
 def _font(size: int):
-    for name in ("seguisb.ttf", "segoeui.ttf", "arial.ttf"):
+    # Regular weight (not Semibold/Black) — thinner digits read better when
+    # Windows downsizes the 64px icon to 16/24/32.
+    for name in ("segoeui.ttf", "arial.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except Exception:
@@ -37,7 +39,7 @@ def make_icon_image(pct: Optional[float]) -> Image.Image:
         text = "!!"
     else:
         text = f"{int(pct)}"
-    font_size = 38 if len(text) == 1 else 30
+    font_size = 46 if len(text) == 1 else 38
     font = _font(font_size)
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
