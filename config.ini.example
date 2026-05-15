@@ -4,8 +4,9 @@ org_id        = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 poll_interval = 60
 
 [ui]
-language = en              ; en | ko
-mode     = overlay         ; overlay | tray | cli | autohide
+language       = en              ; en | ko
+mode           = overlay         ; overlay | tray | cli | autohide
+tray_companion = false           ; show tray icon alongside overlay/autohide
 
 [tray]
 popup_position = above     ; above | below
