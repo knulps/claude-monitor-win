@@ -29,8 +29,24 @@ def _font(size: int):
     return ImageFont.load_default()
 
 
+def _fit_font(draw, text, max_dim):
+    """Largest font whose `text` fits within max_dim px (both width and height).
+
+    Lets 1-digit, 2-digit, '!!' and '—' all auto-scale to nearly fill the icon.
+    """
+    best = _font(8)
+    size = 8
+    while size < 200:
+        candidate = _font(size + 2)
+        bbox = draw.textbbox((0, 0), text, font=candidate)
+        if bbox[2] - bbox[0] > max_dim or bbox[3] - bbox[1] > max_dim:
+            break
+        best, size = candidate, size + 2
+    return best
+
+
 def make_icon_image(pct: Optional[float]) -> Image.Image:
-    """Dark background with the percentage drawn in the status color."""
+    """Dark background with the percentage drawn as large as the icon allows."""
     img = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), ICON_BG)
     draw = ImageDraw.Draw(img)
     if pct is None:
@@ -39,8 +55,7 @@ def make_icon_image(pct: Optional[float]) -> Image.Image:
         text = "!!"
     else:
         text = f"{int(pct)}"
-    font_size = 46 if len(text) == 1 else 38
-    font = _font(font_size)
+    font = _fit_font(draw, text, ICON_SIZE * 0.96)   # ~no padding
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((ICON_SIZE - tw) / 2 - bbox[0], (ICON_SIZE - th) / 2 - bbox[1]),
