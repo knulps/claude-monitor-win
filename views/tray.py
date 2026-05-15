@@ -170,9 +170,18 @@ class TrayView(View):
                 pystray.MenuItem(T("mode_autohide"), lambda: self.manager.request_switch("autohide")),
             )),
             pystray.MenuItem(T("menu_refresh"), lambda: self.manager.request_refresh()),
+            pystray.MenuItem(T("menu_tray_settings"), lambda: self._open_tray_settings()),
             pystray.MenuItem(T("menu_quit"),    lambda: self.manager.request_quit()),
             pystray.MenuItem("show", self._on_left_click, default=True, visible=False),
         )
+
+    def _open_tray_settings(self):
+        """Open Windows taskbar settings so the user can set this icon to always show."""
+        try:
+            import os
+            os.startfile("ms-settings:taskbar")
+        except Exception as e:
+            print(f"[tray] could not open Windows settings: {e}")
 
     def _on_left_click(self, icon, item):
         # pystray callback (pystray thread) — defer to the Tk main thread.
