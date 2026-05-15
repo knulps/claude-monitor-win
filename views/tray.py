@@ -235,7 +235,7 @@ class TrayView(View):
     # -- Menu / interactions ------------------------------------------------
 
     def _build_menu(self):
-        return pystray.Menu(
+        items = [
             pystray.MenuItem(T("menu_switch_mode"), pystray.Menu(
                 pystray.MenuItem(T("mode_overlay"),  lambda: self.manager.request_switch("overlay")),
                 pystray.MenuItem(T("mode_tray"),     lambda: None, enabled=False),
@@ -243,9 +243,17 @@ class TrayView(View):
             )),
             pystray.MenuItem(T("menu_refresh"), lambda: self.manager.request_refresh()),
             pystray.MenuItem(T("menu_tray_settings"), lambda: self._open_tray_settings()),
-            pystray.MenuItem(T("menu_quit"),    lambda: self.manager.request_quit()),
-            pystray.MenuItem("show", self._on_left_click, default=True, visible=False),
-        )
+        ]
+        if self.companion:
+            # Marshal to Tk main thread: pystray callbacks run on the pystray thread,
+            # and request_toggle_companion touches Tk (popup destroy, after() calls).
+            items.append(
+                pystray.MenuItem(T("menu_companion_off"),
+                                 lambda: self._post(lambda: self.manager.request_toggle_companion(False)))
+            )
+        items.append(pystray.MenuItem(T("menu_quit"), lambda: self.manager.request_quit()))
+        items.append(pystray.MenuItem("show", self._on_left_click, default=True, visible=False))
+        return pystray.Menu(*items)
 
     def _open_tray_settings(self):
         # pystray callback (pystray thread) — marshal the dialog to the Tk main thread.
@@ -266,7 +274,16 @@ class TrayView(View):
 
     def _on_left_click(self, icon, item):
         # pystray callback (pystray thread) — defer to the Tk main thread.
-        self._post(self._toggle_popup)
+        self._post(self._handle_left_click)
+
+    def _handle_left_click(self):
+        # Runs on the Tk main thread (posted from _on_left_click).
+        if self.companion:
+            # In companion mode, bring the main overlay/autohide window to focus
+            # rather than opening a standalone popup.
+            self.manager.request_focus_main_view()
+            return
+        self._toggle_popup()
 
     def _toggle_popup(self):
         if self._popup is not None:
