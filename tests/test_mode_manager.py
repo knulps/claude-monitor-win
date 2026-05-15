@@ -291,12 +291,71 @@ def test_on_poll_data_fans_out_to_companion(tmp_path):
         companion_factories={"tray": FakeView},
         initial_companion_flag=True,
     )
-    # start_initial doesn't auto-sync companion until Task 8 wires it in,
-    # so set up companion explicitly here.
+    # start_initial auto-syncs companion (Task 8), so overlay mode creates companion directly.
     mgr.start_initial("overlay")
-    mgr.current_mode = "overlay"
-    mgr._sync_companion()
-    assert mgr.current_companion is not None  # sanity from Task 6
+    assert mgr.current_companion is not None  # sanity from Task 8
     mgr.on_poll_data("D1")
     assert mgr.current_view.updates == ["D1"]
     assert mgr.current_companion.updates == ["D1"]
+
+
+# ---------------------------------------------------------------------------
+# Task 8: _sync_companion wired into start_initial, _do_switch, run cleanup
+# ---------------------------------------------------------------------------
+
+def test_start_initial_creates_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    assert mgr.current_companion is not None
+    assert mgr.current_companion.started
+
+
+def test_switch_overlay_to_autohide_keeps_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    old_companion = mgr.current_companion
+    mgr._do_switch("autohide")
+    # Companion is recreated (bound to new root), not preserved verbatim.
+    assert old_companion.stopped
+    assert mgr.current_companion is not None
+    assert mgr.current_companion is not old_companion
+    assert mgr.current_companion.started
+
+
+def test_switch_overlay_to_cli_stops_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    mgr._do_switch("cli")
+    assert mgr.current_companion is None
+
+
+def test_on_poll_data_skips_stale_companion_tk_callback(tmp_path):
+    """A Tk companion's deferred callback no-ops if the companion was cleared in the meantime."""
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": FakeTkView, "tray": FakeTkView,
+                        "cli": FakeTkView, "autohide": FakeTkView},
+        companion_factories={"tray": FakeTkView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    companion = mgr.current_companion
+    assert companion is not None
+    mgr.on_poll_data("D1")
+    # Capture the companion's deferred callback and clear the companion (simulates _do_switch)
+    _ms, fn = companion.root.after_calls[0]
+    mgr.current_companion = None
+    fn()  # stale callback fires
+    assert companion.updates == []  # must be a no-op

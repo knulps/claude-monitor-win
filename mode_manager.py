@@ -82,6 +82,7 @@ class ModeManager:
         self.current_mode = mode
         self.current_view = self.view_factories[mode](self)
         self.current_view.start(self.last_data)
+        self._sync_companion()
 
     def run(self):
         """Drive whichever main loop the current view needs.
@@ -103,6 +104,12 @@ class ModeManager:
                 # No pending switch; loop exited for quit
                 break
         # Cleanup on quit
+        if self.current_companion:
+            try:
+                self.current_companion.stop()
+            except Exception:
+                pass
+            self.current_companion = None
         if self.current_view:
             self.current_view.stop()
         if self.poller:
@@ -172,6 +179,14 @@ class ModeManager:
                 cfg_save_mode(self.cfg_path, mode)
             except Exception as e:
                 print(f"[mode save error] {e}")
+        # Stop the companion first so its borrowed root reference is released
+        # before the main view (which owns the root) is destroyed.
+        if self.current_companion:
+            try:
+                self.current_companion.stop()
+            except Exception as e:
+                print(f"[companion stop error] {e}")
+            self.current_companion = None
         # Stop the outgoing view before constructing the next one.
         # View.stop() is idempotent, so a prior stop() from request_switch() is harmless.
         if self.current_view:
@@ -179,3 +194,4 @@ class ModeManager:
         self.current_mode = mode
         self.current_view = self.view_factories[mode](self)
         self.current_view.start(self.last_data)
+        self._sync_companion()
