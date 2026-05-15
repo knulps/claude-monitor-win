@@ -46,6 +46,9 @@ class ModeManager:
 
     def _sync_companion(self):
         """Idempotent: brings current_companion into agreement with _should_show_companion()."""
+        if self._pending_switch is not None:
+            # A switch is in flight; _do_switch will call _sync_companion when it lands.
+            return
         want = self._should_show_companion()
         if want and self.current_companion is None:
             factory = self.companion_factories.get("tray")
