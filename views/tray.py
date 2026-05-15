@@ -81,12 +81,14 @@ def fmt(pct):
 
 
 class TrayView(View):
-    def __init__(self, manager):
+    def __init__(self, manager, *, companion: bool = False):
         super().__init__(manager)
+        self.companion = companion
         self.icon: Optional[pystray.Icon] = None
         self._popup: Optional[tk.Toplevel] = None
         self._last: Optional[UsageData] = None
         self._tk_root: Optional[tk.Tk] = None
+        self._owns_root: bool = False
         self._stop = threading.Event()
         # Cross-thread work queue: pystray/Poller threads enqueue, run_mainloop drains.
         self._tk_queue: "queue.Queue" = queue.Queue()
@@ -94,9 +96,26 @@ class TrayView(View):
     # ModeManager calls start() on the main thread.
     def start(self, initial: Optional[UsageData]) -> None:
         self._last = initial
-        # Hidden Tk root so we can spawn popup Toplevels later.
-        self._tk_root = tk.Tk()
-        self._tk_root.withdraw()
+        if self.companion:
+            # Borrow the main view's root so we don't fight Tkinter over a second tk.Tk()
+            # and so messageboxes/Toplevels parent correctly.
+            main_view = getattr(self.manager, "current_view", None)
+            borrowed = getattr(main_view, "root", None) if main_view else None
+            if borrowed is None:
+                # Defensive: fall back to owning a hidden root (worst case: dual roots,
+                # same as standalone).
+                self._tk_root = tk.Tk()
+                self._tk_root.withdraw()
+                self._owns_root = True
+            else:
+                self._tk_root = borrowed
+                self._owns_root = False
+        else:
+            # Hidden Tk root so we can spawn popup Toplevels later.
+            self._tk_root = tk.Tk()
+            self._tk_root.withdraw()
+            self._owns_root = True
+
         self.icon = pystray.Icon(
             "claude_monitor",
             icon=make_icon_image(initial.five_hour_pct if initial else None),
@@ -107,7 +126,12 @@ class TrayView(View):
         threading.Thread(target=self.icon.run, daemon=True).start()
 
     def run_mainloop(self):
-        # Main thread: pump Tk and drain the cross-thread work queue.
+        if self.companion:
+            # The main view drives the Tk loop. Pump our queue via root.after.
+            # Schedule a drain tick so cross-thread work still flows.
+            self._schedule_companion_drain()
+            return
+        # Standalone: pump Tk + drain queue ourselves.
         while not self._stop.is_set():
             root = self._tk_root
             if root is None:
@@ -120,6 +144,18 @@ class TrayView(View):
             self._stop.wait(0.05)
         # Tear down Tk resources on the main thread, after the loop exits.
         self._teardown_tk()
+
+    def _schedule_companion_drain(self):
+        if self._tk_root is None or self._stop.is_set():
+            return
+        try:
+            self._drain_queue()
+        except Exception as e:
+            print(f"[tray companion drain error] {e}")
+        try:
+            self._tk_root.after(50, self._schedule_companion_drain)
+        except Exception:
+            pass
 
     def _drain_queue(self):
         while True:
@@ -147,6 +183,16 @@ class TrayView(View):
             except Exception:
                 pass
             self.icon = None
+        if self.companion:
+            # We do not own the root; just drop the popup if any (must run on Tk thread).
+            if self._popup is not None and self._tk_root is not None:
+                try:
+                    self._popup.destroy()
+                except Exception:
+                    pass
+                self._popup = None
+            # Drop the borrowed reference; do NOT destroy.
+            self._tk_root = None
 
     def _teardown_tk(self):
         if self._popup is not None:
