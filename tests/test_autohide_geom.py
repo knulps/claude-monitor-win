@@ -1,4 +1,4 @@
-from views.autohide import _compute_geoms
+from views.autohide import _compute_geoms, _in_zone
 
 
 def test_right_edge_docks_to_this_monitor_not_primary():
@@ -48,3 +48,30 @@ def test_right_edge_with_right_taskbar():
     hidden, shown = _compute_geoms(work, full, "right", 230, 178, 3)
     assert hidden == "230x178+2557+1254"   # full.right(2560) - peek(3); y = work.bottom(1440) - 178 - 8
     assert shown == "230x178+2278+1254"    # work.right(2512) - w(230) - 4
+
+
+def test_in_zone_shown_bottom_includes_peek_strip():
+    """Regression: edge=bottom shown — window sits above the taskbar but the trigger
+    peek strip is at the screen bottom. The active zone must span window->screen edge,
+    or the cursor held on the strip flickers the window hide/show."""
+    full = (0, 0, 2560, 1440)         # fb = 1440 (physical screen bottom)
+    win = (2314, 1206, 230, 178)      # shown position (above the taskbar)
+    assert _in_zone(True, "bottom", win, full, 3, 2400, 1439) is True   # on the bottom strip -> still inside
+    assert _in_zone(True, "bottom", win, full, 3, 2400, 1250) is True   # on the window itself
+    assert _in_zone(True, "bottom", win, full, 3, 2400, 1100) is False  # above the window -> outside
+    assert _in_zone(True, "bottom", win, full, 3, 2000, 1250) is False  # left of the window column -> outside
+
+
+def test_in_zone_hidden_bottom_peek_strip():
+    full = (0, 0, 2560, 1440)
+    win = (2314, 1437, 230, 178)      # hidden position: ry = fb - peek
+    assert _in_zone(False, "bottom", win, full, 3, 2400, 1439) is True   # on the strip
+    assert _in_zone(False, "bottom", win, full, 3, 2400, 1400) is False  # above the strip
+
+
+def test_in_zone_shown_right_includes_peek_strip():
+    """Same flicker guard for the right edge."""
+    full = (0, 0, 2560, 1440)         # fr = 2560
+    win = (2326, 1206, 230, 178)      # shown position
+    assert _in_zone(True, "right", win, full, 3, 2559, 1250) is True    # on the right strip -> inside
+    assert _in_zone(True, "right", win, full, 3, 2400, 1100) is False   # above the window row -> outside

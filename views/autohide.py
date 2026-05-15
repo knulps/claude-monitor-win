@@ -39,6 +39,37 @@ def _compute_geoms(work, full, edge, w, h, peek):
             f"{w}x{h}+{wr - w - 4}+{y_band}")
 
 
+def _in_zone(shown, edge, win, full, peek, x, y):
+    """Is the cursor (x, y) inside the hover-active zone?
+
+    `win`  = (rx, ry, rw, rh) of the window's current position.
+    `full` = (fl, ft, fr, fb) full monitor bounds.
+
+    When hidden, the zone is just the peek strip on the docked screen edge.
+    When shown, the zone is the window PLUS the corridor between the window and
+    that screen edge — otherwise holding the cursor on the original peek strip
+    (which sits past the taskbar, away from the shown window) makes the window
+    flicker hide/show.
+    """
+    rx, ry, rw, rh = win
+    fl, ft, fr, fb = full
+    if shown:
+        if edge == "right":
+            return rx <= x <= fr and ry <= y <= ry + rh
+        if edge == "left":
+            return fl <= x <= rx + rw and ry <= y <= ry + rh
+        if edge == "top":
+            return rx <= x <= rx + rw and ft <= y <= ry + rh
+        return rx <= x <= rx + rw and ry <= y <= fb  # bottom
+    if edge == "right":
+        return fr - peek <= x <= fr and ry <= y <= ry + rh
+    if edge == "left":
+        return fl <= x <= fl + peek and ry <= y <= ry + rh
+    if edge == "top":
+        return rx <= x <= rx + rw and ft <= y <= ft + peek
+    return rx <= x <= rx + rw and fb - peek <= y <= fb  # bottom
+
+
 class _MONITORINFO(ctypes.Structure):
     _fields_ = [("cbSize", wintypes.DWORD),
                 ("rcMonitor", wintypes.RECT),
@@ -183,19 +214,9 @@ class AutohideView(OverlayView):
     def _cursor_in_active_zone(self, x, y):
         rx = self.root.winfo_rootx()
         ry = self.root.winfo_rooty()
-        rw = self.W
-        rh = self.H
-        if self._shown:
-            return rx <= x <= rx + rw and ry <= y <= ry + rh
-        # Hidden state — the peek strip sits on the FULL monitor edge.
-        fl, ft, fr, fb = self._full_rect or (0, 0, rx + rw, ry + rh)
-        if self.EDGE == "right":
-            return fr - self.PEEK <= x <= fr and ry <= y <= ry + rh
-        if self.EDGE == "left":
-            return fl <= x <= fl + self.PEEK and ry <= y <= ry + rh
-        if self.EDGE == "top":
-            return rx <= x <= rx + rw and ft <= y <= ft + self.PEEK
-        return rx <= x <= rx + rw and fb - self.PEEK <= y <= fb
+        full = self._full_rect or (0, 0, rx + self.W, ry + self.H)
+        return _in_zone(self._shown, self.EDGE, (rx, ry, self.W, self.H),
+                        full, self.PEEK, x, y)
 
     def _slide_in(self, force=False):
         if self._shown and not force:
