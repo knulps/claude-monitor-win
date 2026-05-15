@@ -48,19 +48,35 @@ def _hide_console_for_frozen_gui(start_mode):
         pass
 
 
+def _show_error(msg, mode):
+    """Always print; on a frozen GUI exe, also show a tk messagebox so the user
+    actually sees the error (a console window flashes and vanishes on double-click)."""
+    print(msg)
+    if getattr(sys, "frozen", False) and mode != "cli":
+        try:
+            import tkinter.messagebox as mb
+            mb.showerror("Claude Usage Monitor", msg)
+        except Exception:
+            pass
+
+
 def main():
     args = parse_args()
 
     if not CFG_PATH.exists():
-        print(f"Missing {CFG_PATH}. Copy config.ini.example and fill in cookies + org_id.")
+        _show_error(
+            f"Missing {CFG_PATH}.\n\nCopy config.ini.example next to the executable "
+            f"and fill in cookies + org_id.",
+            args.mode,
+        )
         sys.exit(1)
 
     cfg = Config.load(CFG_PATH)
     if not cfg.cookies:
-        print("Set 'cookies' under [claude] in config.ini")
+        _show_error("Set 'cookies' under [claude] in config.ini", args.mode)
         sys.exit(1)
     if not cfg.org_id:
-        print("Set 'org_id' under [claude] in config.ini")
+        _show_error("Set 'org_id' under [claude] in config.ini", args.mode)
         sys.exit(1)
 
     set_language(cfg.language)

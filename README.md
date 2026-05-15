@@ -85,6 +85,8 @@ pyinstaller claude_monitor.spec
 The executable is written to `dist/claude_monitor.exe`. It's built with a console
 so CLI mode works; GUI modes hide the console window automatically.
 
+> **Important — config.ini location for the exe:** the exe reads `config.ini` from its own folder, not the project root. After moving `claude_monitor.exe` anywhere you want, copy `config.ini` (with your real cookies and org_id) into the **same folder** as the exe. If `config.ini` is missing, the exe shows an error dialog and exits.
+
 ## Configuration
 
 Credentials are read from `config.ini`. Copy the template and fill in your values:
