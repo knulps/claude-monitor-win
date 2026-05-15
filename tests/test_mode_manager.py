@@ -263,3 +263,19 @@ def test_request_toggle_companion_skips_save_when_no_save_mode(tmp_path):
     mgr.request_toggle_companion(True)
     assert mgr.tray_companion is True
     assert saved == []  # NOT persisted under --no-save-mode
+
+
+def test_sync_companion_leaves_state_clean_when_start_fails(tmp_path):
+    """If the companion's start() raises, current_companion stays None (no half-initialized state)."""
+    class FailingView(FakeView):
+        def start(self, initial):
+            raise RuntimeError("start failed")
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FailingView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()  # should not raise; should leave current_companion as None
+    assert mgr.current_companion is None

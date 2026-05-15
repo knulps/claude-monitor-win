@@ -51,12 +51,13 @@ class ModeManager:
             factory = self.companion_factories.get("tray")
             if factory is None:
                 return
-            self.current_companion = factory(self)
+            candidate = factory(self)
             try:
-                self.current_companion.start(self.last_data)
+                candidate.start(self.last_data)
             except Exception as e:
                 print(f"[companion start error] {e}")
-                self.current_companion = None
+                return
+            self.current_companion = candidate
         elif not want and self.current_companion is not None:
             try:
                 self.current_companion.stop()
