@@ -108,7 +108,7 @@ class ModeManager:
             try:
                 self.current_companion.stop()
             except Exception:
-                pass
+                pass  # Quitting: ignore; log would go to a possibly-dead console.
             self.current_companion = None
         if self.current_view:
             self.current_view.stop()
