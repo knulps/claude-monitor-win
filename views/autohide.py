@@ -145,6 +145,11 @@ class AutohideView(OverlayView):
                              command=self._toggle_force_show,
                              variable=self._force_show_var)
         menu.add_command(label=T("menu_refresh"), command=self.manager.request_refresh)
+        glyph = "☑" if getattr(self.manager, "tray_companion", False) else "☐"
+        menu.add_command(
+            label=f"{glyph} {T('menu_tray_companion')}",
+            command=lambda: self.manager.request_toggle_companion(not self.manager.tray_companion),
+        )
         menu.add_separator()
         menu.add_command(label=T("menu_quit"), command=self.manager.request_quit)
         menu.post(e.x_root, e.y_root)
