@@ -194,3 +194,72 @@ def test_should_show_companion_truth_table(tmp_path):
         mgr.current_mode = mode
         mgr.tray_companion = flag
         assert mgr._should_show_companion() is expected, f"{mode=} {flag=}"
+
+
+# ---------------------------------------------------------------------------
+# Task 6: _sync_companion + request_toggle_companion
+# ---------------------------------------------------------------------------
+
+def test_sync_companion_starts_when_compatible(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()
+    assert mgr.current_companion is not None
+    assert mgr.current_companion.started
+
+
+def test_sync_companion_skips_when_incompatible(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "cli"
+    mgr._sync_companion()
+    assert mgr.current_companion is None
+
+
+def test_sync_companion_stops_existing_when_no_longer_needed(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()
+    companion = mgr.current_companion
+    mgr.tray_companion = False
+    mgr._sync_companion()
+    assert companion.stopped
+    assert mgr.current_companion is None
+
+
+def test_request_toggle_companion_persists_when_save_mode_on(tmp_path):
+    saved = []
+    mgr, cfg = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        save_tray_companion=lambda path, value: saved.append((path, value)),
+    )
+    mgr.current_mode = "overlay"
+    mgr.request_toggle_companion(True)
+    assert mgr.tray_companion is True
+    assert saved == [(cfg, True)]
+
+
+def test_request_toggle_companion_skips_save_when_no_save_mode(tmp_path):
+    saved = []
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        save_mode=False,
+        save_tray_companion=lambda path, value: saved.append((path, value)),
+    )
+    mgr.current_mode = "overlay"
+    mgr.request_toggle_companion(True)
+    assert mgr.tray_companion is True
+    assert saved == []  # NOT persisted under --no-save-mode

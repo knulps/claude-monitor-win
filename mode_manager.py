@@ -44,6 +44,35 @@ class ModeManager:
         """
         return self.tray_companion and self.current_mode in ("overlay", "autohide")
 
+    def _sync_companion(self):
+        """Idempotent: brings current_companion into agreement with _should_show_companion()."""
+        want = self._should_show_companion()
+        if want and self.current_companion is None:
+            factory = self.companion_factories.get("tray")
+            if factory is None:
+                return
+            self.current_companion = factory(self)
+            try:
+                self.current_companion.start(self.last_data)
+            except Exception as e:
+                print(f"[companion start error] {e}")
+                self.current_companion = None
+        elif not want and self.current_companion is not None:
+            try:
+                self.current_companion.stop()
+            except Exception as e:
+                print(f"[companion stop error] {e}")
+            self.current_companion = None
+
+    def request_toggle_companion(self, on: bool):
+        self.tray_companion = bool(on)
+        if self.save_mode and self.save_tray_companion is not None:
+            try:
+                self.save_tray_companion(self.cfg_path, self.tray_companion)
+            except Exception as e:
+                print(f"[companion save error] {e}")
+        self._sync_companion()
+
     # -- Lifecycle ---------------------------------------------------------
 
     def start_initial(self, mode: str):
