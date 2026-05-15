@@ -131,6 +131,8 @@ Override the mode at launch with `--mode <name>` (e.g., `python claude_monitor.p
 
 > **CLI mode** requires a visible console — run with `python.exe`, not `pythonw.exe`. Switching to CLI from another mode is blocked (with a message) if no console is attached. CLI mode has no right-click menu, so to leave it press `q` and relaunch with another `--mode`.
 
+> **Tray mode:** if the icon is hidden in the `^` overflow, right-click it → "Always show icon (Windows settings)". In the Settings window that opens, expand **"Other system tray icons"** and turn on **"Claude Usage Monitor"**.
+
 ## Usage
 
 ```bash

@@ -191,7 +191,16 @@ class TrayView(View):
         )
 
     def _open_tray_settings(self):
-        """Open Windows taskbar settings so the user can set this icon to always show."""
+        # pystray callback (pystray thread) — marshal the dialog to the Tk main thread.
+        self._post(self._show_settings_help)
+
+    def _show_settings_help(self):
+        """Explain the Windows setting, then open the Taskbar settings page."""
+        try:
+            import tkinter.messagebox as mb
+            mb.showinfo(T("tray_settings_title"), T("tray_settings_help"))
+        except Exception:
+            pass
         try:
             import os
             os.startfile("ms-settings:taskbar")
