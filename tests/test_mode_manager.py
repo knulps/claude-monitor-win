@@ -159,3 +159,259 @@ def test_on_poll_data_skips_stale_tk_view_callback(tmp_path):
     mgr._do_switch("tray")
     fn()  # stale callback fires
     assert old.updates == []          # stale view was NOT updated
+
+
+# ---------------------------------------------------------------------------
+# Helper reused by Tasks 5, 6, 7, 8, 9
+# ---------------------------------------------------------------------------
+
+def _make_mgr(tmp_path, **kwargs):
+    cfg = tmp_path / "c.ini"
+    cfg.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    defaults = dict(
+        cfg_path=cfg,
+        view_factories={"overlay": FakeView, "tray": FakeView, "cli": FakeView, "autohide": FakeView},
+        poller=None,
+        save_mode=True,
+    )
+    defaults.update(kwargs)
+    return ModeManager(**defaults), cfg
+
+
+def test_should_show_companion_truth_table(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    cases = [
+        ("overlay",  True,  True),
+        ("autohide", True,  True),
+        ("tray",     True,  False),
+        ("cli",      True,  False),
+        ("overlay",  False, False),
+        ("autohide", False, False),
+        ("tray",     False, False),
+        ("cli",      False, False),
+    ]
+    for mode, flag, expected in cases:
+        mgr.current_mode = mode
+        mgr.tray_companion = flag
+        assert mgr._should_show_companion() is expected, f"{mode=} {flag=}"
+
+
+# ---------------------------------------------------------------------------
+# Task 6: _sync_companion + request_toggle_companion
+# ---------------------------------------------------------------------------
+
+def test_sync_companion_starts_when_compatible(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()
+    assert mgr.current_companion is not None
+    assert mgr.current_companion.started
+
+
+def test_sync_companion_skips_when_incompatible(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "cli"
+    mgr._sync_companion()
+    assert mgr.current_companion is None
+
+
+def test_sync_companion_stops_existing_when_no_longer_needed(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()
+    companion = mgr.current_companion
+    mgr.tray_companion = False
+    mgr._sync_companion()
+    assert companion.stopped
+    assert mgr.current_companion is None
+
+
+def test_request_toggle_companion_persists_when_save_mode_on(tmp_path):
+    saved = []
+    mgr, cfg = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        save_tray_companion=lambda path, value: saved.append((path, value)),
+    )
+    mgr.current_mode = "overlay"
+    mgr.request_toggle_companion(True)
+    assert mgr.tray_companion is True
+    assert saved == [(cfg, True)]
+
+
+def test_request_toggle_companion_skips_save_when_no_save_mode(tmp_path):
+    saved = []
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        save_mode=False,
+        save_tray_companion=lambda path, value: saved.append((path, value)),
+    )
+    mgr.current_mode = "overlay"
+    mgr.request_toggle_companion(True)
+    assert mgr.tray_companion is True
+    assert saved == []  # NOT persisted under --no-save-mode
+
+
+def test_sync_companion_leaves_state_clean_when_start_fails(tmp_path):
+    """If the companion's start() raises, current_companion stays None (no half-initialized state)."""
+    class FailingView(FakeView):
+        def start(self, initial):
+            raise RuntimeError("start failed")
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FailingView},
+        initial_companion_flag=True,
+    )
+    mgr.current_mode = "overlay"
+    mgr._sync_companion()  # should not raise; should leave current_companion as None
+    assert mgr.current_companion is None
+
+
+# ---------------------------------------------------------------------------
+# Task 7: on_poll_data fans out to companion
+# ---------------------------------------------------------------------------
+
+def test_on_poll_data_fans_out_to_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    # start_initial auto-syncs companion (Task 8), so overlay mode creates companion directly.
+    mgr.start_initial("overlay")
+    assert mgr.current_companion is not None  # sanity from Task 8
+    mgr.on_poll_data("D1")
+    assert mgr.current_view.updates == ["D1"]
+    assert mgr.current_companion.updates == ["D1"]
+
+
+# ---------------------------------------------------------------------------
+# Task 8: _sync_companion wired into start_initial, _do_switch, run cleanup
+# ---------------------------------------------------------------------------
+
+def test_start_initial_creates_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    assert mgr.current_companion is not None
+    assert mgr.current_companion.started
+
+
+def test_switch_overlay_to_autohide_keeps_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    old_companion = mgr.current_companion
+    mgr._do_switch("autohide")
+    # Companion is recreated (bound to new root), not preserved verbatim.
+    assert old_companion.stopped
+    assert mgr.current_companion is not None
+    assert mgr.current_companion is not old_companion
+    assert mgr.current_companion.started
+
+
+def test_switch_overlay_to_cli_stops_companion(tmp_path):
+    mgr, _ = _make_mgr(
+        tmp_path,
+        companion_factories={"tray": FakeView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    mgr._do_switch("cli")
+    assert mgr.current_companion is None
+
+
+def test_on_poll_data_skips_stale_companion_tk_callback(tmp_path):
+    """A Tk companion's deferred callback no-ops if the companion was cleared in the meantime."""
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": FakeTkView, "tray": FakeTkView,
+                        "cli": FakeTkView, "autohide": FakeTkView},
+        companion_factories={"tray": FakeTkView},
+        initial_companion_flag=True,
+    )
+    mgr.start_initial("overlay")
+    companion = mgr.current_companion
+    assert companion is not None
+    mgr.on_poll_data("D1")
+    # Capture the companion's deferred callback and clear the companion (simulates _do_switch)
+    _ms, fn = companion.root.after_calls[0]
+    mgr.current_companion = None
+    fn()  # stale callback fires
+    assert companion.updates == []  # must be a no-op
+
+
+# ---------------------------------------------------------------------------
+# Task 9: View.focus() no-op + ModeManager.request_focus_main_view
+# ---------------------------------------------------------------------------
+
+def test_request_focus_main_view_calls_focus_on_current(tmp_path):
+    class FocusView(FakeView):
+        def __init__(self, manager):
+            super().__init__(manager)
+            self.focused = 0
+
+        def focus(self):
+            self.focused += 1
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": FocusView, "tray": FocusView, "cli": FocusView, "autohide": FocusView},
+    )
+    mgr.start_initial("overlay")
+    mgr.request_focus_main_view()
+    assert mgr.current_view.focused == 1
+
+
+def test_request_focus_main_view_safe_when_no_focus_method(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    mgr.start_initial("overlay")
+    # FakeView has no focus(); should not raise.
+    mgr.request_focus_main_view()
+
+
+def test_request_focus_main_view_swallows_focus_exception(tmp_path):
+    class ErrorFocusView(FakeView):
+        def __init__(self, manager):
+            super().__init__(manager)
+            self.focused = 0
+
+        def focus(self):
+            self.focused += 1
+            raise RuntimeError("window destroyed")
+
+    mgr, _ = _make_mgr(
+        tmp_path,
+        view_factories={"overlay": ErrorFocusView, "tray": ErrorFocusView, "cli": ErrorFocusView, "autohide": ErrorFocusView},
+    )
+    mgr.start_initial("overlay")
+    # focus() raises; request_focus_main_view() must not propagate.
+    mgr.request_focus_main_view()
+    assert mgr.current_view.focused == 1
+
+
+def test_request_focus_main_view_safe_when_no_current_view(tmp_path):
+    mgr, _ = _make_mgr(tmp_path)
+    mgr.current_view = None
+    # Should not raise even with no current view.
+    mgr.request_focus_main_view()

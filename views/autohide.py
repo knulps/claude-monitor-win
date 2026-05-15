@@ -145,6 +145,11 @@ class AutohideView(OverlayView):
                              command=self._toggle_force_show,
                              variable=self._force_show_var)
         menu.add_command(label=T("menu_refresh"), command=self.manager.request_refresh)
+        glyph = "☑" if getattr(self.manager, "tray_companion", False) else "☐"
+        menu.add_command(
+            label=f"{glyph} {T('menu_tray_companion')}",
+            command=lambda: self.manager.request_toggle_companion(not self.manager.tray_companion),
+        )
         menu.add_separator()
         menu.add_command(label=T("menu_quit"), command=self.manager.request_quit)
         menu.post(e.x_root, e.y_root)
@@ -157,6 +162,25 @@ class AutohideView(OverlayView):
             # Force show turned off while the cursor is away — schedule the hide
             # the hover state machine would otherwise miss (it only acts on edges).
             self._schedule_hide()
+
+    def focus(self) -> None:
+        """Companion left-click: ensure the docked panel is visible.
+
+        If not already force-shown, slide in and lock open. Caller can later
+        toggle force-show off via the right-click menu.
+        """
+        if not self.root:
+            return
+        try:
+            if not self._force_show:
+                self._force_show = True
+                if self._force_show_var is not None:
+                    self._force_show_var.set(True)
+                self._slide_in(force=True)
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
 
     def _dock_initial(self):
         self._work_rect, self._full_rect = self._current_monitor_rects()

@@ -180,6 +180,17 @@ class OverlayView(View):
         y = self.root.winfo_y() + e.y - self._dy
         self.root.geometry(f"+{x}+{y}")
 
+    def focus(self) -> None:
+        if not self.root:
+            return
+        try:
+            self.root.attributes("-topmost", False)
+            self.root.attributes("-topmost", True)
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
+
     def _bind_menu(self):
         self.root.bind("<Button-3>", self._show_menu)
 
@@ -194,6 +205,12 @@ class OverlayView(View):
         menu.add_cascade(label=T("menu_switch_mode"), menu=switch)
         menu.add_separator()
         menu.add_command(label=T("menu_refresh"), command=self.manager.request_refresh)
+        # Tray companion toggle — glyph reflects current state to avoid Tk variable lifetime issues.
+        glyph = "☑" if getattr(self.manager, "tray_companion", False) else "☐"
+        menu.add_command(
+            label=f"{glyph} {T('menu_tray_companion')}",
+            command=lambda: self.manager.request_toggle_companion(not self.manager.tray_companion),
+        )
         menu.add_separator()
         menu.add_command(label=T("menu_quit"), command=self.manager.request_quit)
         menu.post(e.x_root, e.y_root)

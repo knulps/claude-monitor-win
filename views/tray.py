@@ -81,12 +81,14 @@ def fmt(pct):
 
 
 class TrayView(View):
-    def __init__(self, manager):
+    def __init__(self, manager, *, companion: bool = False):
         super().__init__(manager)
+        self.companion = companion
         self.icon: Optional[pystray.Icon] = None
         self._popup: Optional[tk.Toplevel] = None
         self._last: Optional[UsageData] = None
         self._tk_root: Optional[tk.Tk] = None
+        self._owns_root: bool = False
         self._stop = threading.Event()
         # Cross-thread work queue: pystray/Poller threads enqueue, run_mainloop drains.
         self._tk_queue: "queue.Queue" = queue.Queue()
@@ -94,20 +96,45 @@ class TrayView(View):
     # ModeManager calls start() on the main thread.
     def start(self, initial: Optional[UsageData]) -> None:
         self._last = initial
-        # Hidden Tk root so we can spawn popup Toplevels later.
-        self._tk_root = tk.Tk()
-        self._tk_root.withdraw()
+        if self.companion:
+            # Borrow the main view's root so we don't fight Tkinter over a second tk.Tk()
+            # and so messageboxes/Toplevels parent correctly.
+            main_view = getattr(self.manager, "current_view", None)
+            borrowed = getattr(main_view, "root", None) if main_view else None
+            if borrowed is None:
+                # Defensive: fall back to owning a hidden root (worst case: dual roots,
+                # same as standalone).
+                self._tk_root = tk.Tk()
+                self._tk_root.withdraw()
+                self._owns_root = True
+            else:
+                self._tk_root = borrowed
+                self._owns_root = False
+            # Companion lives inside the main view's mainloop, so schedule
+            # the cross-thread drain ourselves — no run_mainloop will pump it.
+            self._schedule_companion_drain()
+        else:
+            # Hidden Tk root so we can spawn popup Toplevels later.
+            self._tk_root = tk.Tk()
+            self._tk_root.withdraw()
+            self._owns_root = True
+
         self.icon = pystray.Icon(
             "claude_monitor",
             icon=make_icon_image(initial.five_hour_pct if initial else None),
             title=make_tooltip(initial),
             menu=self._build_menu(),
         )
-        # pystray's run() blocks; run it on a daemon thread. Tk is pumped by run_mainloop().
+        # pystray's run() blocks; run it on a daemon thread. Tk is pumped by
+        # run_mainloop() (standalone) or the main view (companion).
         threading.Thread(target=self.icon.run, daemon=True).start()
 
     def run_mainloop(self):
-        # Main thread: pump Tk and drain the cross-thread work queue.
+        if self.companion:
+            # Companion is pumped by the main view's mainloop. The drain tick
+            # is scheduled in start(), so there's nothing to do here.
+            return
+        # Standalone: pump Tk + drain queue ourselves.
         while not self._stop.is_set():
             root = self._tk_root
             if root is None:
@@ -120,6 +147,18 @@ class TrayView(View):
             self._stop.wait(0.05)
         # Tear down Tk resources on the main thread, after the loop exits.
         self._teardown_tk()
+
+    def _schedule_companion_drain(self):
+        if self._tk_root is None or self._stop.is_set():
+            return
+        try:
+            self._drain_queue()
+        except Exception as e:
+            print(f"[tray companion drain error] {e}")
+        try:
+            self._tk_root.after(50, self._schedule_companion_drain)
+        except Exception:
+            pass
 
     def _drain_queue(self):
         while True:
@@ -147,6 +186,24 @@ class TrayView(View):
             except Exception:
                 pass
             self.icon = None
+        if self.companion:
+            # Tear down the popup (if any) and either destroy our fallback root
+            # or just drop the borrowed reference.
+            if self._popup is not None and self._tk_root is not None:
+                try:
+                    self._popup.destroy()
+                except Exception:
+                    pass
+                self._popup = None
+            if self._owns_root:
+                # Fallback case: we created our own root, so destroy it now —
+                # run_mainloop won't be entered for the companion path.
+                try:
+                    if self._tk_root is not None:
+                        self._tk_root.destroy()
+                except Exception:
+                    pass
+            self._tk_root = None
 
     def _teardown_tk(self):
         if self._popup is not None:
@@ -178,7 +235,7 @@ class TrayView(View):
     # -- Menu / interactions ------------------------------------------------
 
     def _build_menu(self):
-        return pystray.Menu(
+        items = [
             pystray.MenuItem(T("menu_switch_mode"), pystray.Menu(
                 pystray.MenuItem(T("mode_overlay"),  lambda: self.manager.request_switch("overlay")),
                 pystray.MenuItem(T("mode_tray"),     lambda: None, enabled=False),
@@ -186,9 +243,17 @@ class TrayView(View):
             )),
             pystray.MenuItem(T("menu_refresh"), lambda: self.manager.request_refresh()),
             pystray.MenuItem(T("menu_tray_settings"), lambda: self._open_tray_settings()),
-            pystray.MenuItem(T("menu_quit"),    lambda: self.manager.request_quit()),
-            pystray.MenuItem("show", self._on_left_click, default=True, visible=False),
-        )
+        ]
+        if self.companion:
+            # Marshal to Tk main thread: pystray callbacks run on the pystray thread,
+            # and request_toggle_companion touches Tk (popup destroy, after() calls).
+            items.append(
+                pystray.MenuItem(T("menu_companion_off"),
+                                 lambda: self._post(lambda: self.manager.request_toggle_companion(False)))
+            )
+        items.append(pystray.MenuItem(T("menu_quit"), lambda: self.manager.request_quit()))
+        items.append(pystray.MenuItem("show", self._on_left_click, default=True, visible=False))
+        return pystray.Menu(*items)
 
     def _open_tray_settings(self):
         # pystray callback (pystray thread) — marshal the dialog to the Tk main thread.
@@ -209,7 +274,16 @@ class TrayView(View):
 
     def _on_left_click(self, icon, item):
         # pystray callback (pystray thread) — defer to the Tk main thread.
-        self._post(self._toggle_popup)
+        self._post(self._handle_left_click)
+
+    def _handle_left_click(self):
+        # Runs on the Tk main thread (posted from _on_left_click).
+        if self.companion:
+            # In companion mode, bring the main overlay/autohide window to focus
+            # rather than opening a standalone popup.
+            self.manager.request_focus_main_view()
+            return
+        self._toggle_popup()
 
     def _toggle_popup(self):
         if self._popup is not None:

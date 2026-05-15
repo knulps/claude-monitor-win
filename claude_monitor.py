@@ -7,7 +7,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from config import Config, VALID_MODES
+from config import Config, VALID_MODES, save_tray_companion
 from i18n import set_language
 from mode_manager import ModeManager
 from poller import Poller
@@ -92,8 +92,13 @@ def main():
             "cli":      CLIView,
             "autohide": AutohideView,
         },
+        companion_factories={
+            "tray": lambda m: TrayView(m, companion=True),
+        },
         poller=None,  # set below
         save_mode=not args.no_save_mode,
+        save_tray_companion=save_tray_companion,
+        initial_companion_flag=cfg.tray_companion,
     )
     # Expose cfg to views that need it (Autohide reads autohide_* fields)
     mgr.config = cfg

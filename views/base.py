@@ -24,3 +24,6 @@ class View(ABC):
     @abstractmethod
     def on_update(self, data: UsageData) -> None:
         """Fresh data arrived. Tk views get this on the main thread; cli/tray on the Poller thread."""
+
+    def focus(self) -> None:
+        """Bring this view to the foreground. Default: no-op. Override for focusable views."""

@@ -2,7 +2,7 @@ import textwrap
 import pytest
 from pathlib import Path
 
-from config import Config, save_mode
+from config import Config, save_mode, save_tray_companion
 
 
 @pytest.fixture
@@ -17,6 +17,7 @@ def cfg_file(tmp_path):
         [ui]
         language = ko
         mode     = overlay         ; overlay | tray | cli | autohide
+        tray_companion = false
 
         [tray]
         popup_position = above
@@ -42,6 +43,7 @@ def test_load_basic_values(cfg_file):
     assert cfg.autohide_peek_pixels == 3
     assert cfg.autohide_slide_ms == 150
     assert cfg.autohide_hide_delay_ms == 1500
+    assert cfg.tray_companion is False
 
 
 def test_mode_fallback_when_missing(tmp_path):
@@ -99,3 +101,56 @@ def test_save_mode_roundtrip(cfg_file):
     assert cfg.mode == "autohide"
     assert cfg.language == "ko"
     assert cfg.autohide_edge == "right"
+
+
+def test_tray_companion_defaults_false_when_missing(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text("[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\n", encoding="utf-8")
+    cfg = Config.load(p)
+    assert cfg.tray_companion is False
+
+
+def test_tray_companion_loads_true(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text(
+        "[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\ntray_companion = true\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(p)
+    assert cfg.tray_companion is True
+
+
+def test_tray_companion_loads_false_explicit(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text(
+        "[claude]\ncookies=a\norg_id=b\n[ui]\nmode = overlay\ntray_companion = false\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(p)
+    assert cfg.tray_companion is False
+
+
+def test_save_tray_companion_round_trip(cfg_file):
+    save_tray_companion(cfg_file, True)
+    cfg = Config.load(cfg_file)
+    assert cfg.tray_companion is True
+    save_tray_companion(cfg_file, False)
+    cfg = Config.load(cfg_file)
+    assert cfg.tray_companion is False
+
+
+def test_save_tray_companion_preserves_mode_and_comments(cfg_file):
+    save_tray_companion(cfg_file, True)
+    text = cfg_file.read_text(encoding="utf-8")
+    assert "tray_companion = true" in text
+    assert "; overlay | tray | cli | autohide" in text  # comment on mode line preserved
+    assert "language = ko" in text
+
+
+def test_save_tray_companion_adds_section_if_missing(tmp_path):
+    p = tmp_path / "c.ini"
+    p.write_text("[claude]\ncookies=a\norg_id=b\n", encoding="utf-8")
+    save_tray_companion(p, True)
+    text = p.read_text(encoding="utf-8")
+    assert "[ui]" in text
+    assert "tray_companion = true" in text
