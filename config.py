@@ -37,9 +37,9 @@ class Config:
             language=cp.get("ui", "language", fallback="en").strip().lower(),
             mode=mode,
             tray_popup_position=cp.get("tray", "popup_position", fallback="above"),
-            autohide_edge=cp.get("autohide", "edge", fallback="right"),
+            autohide_edge=cp.get("autohide", "edge", fallback="bottom"),
             autohide_peek_pixels=cp.getint("autohide", "peek_pixels", fallback=3),
-            autohide_slide_ms=cp.getint("autohide", "slide_ms", fallback=150),
+            autohide_slide_ms=cp.getint("autohide", "slide_ms", fallback=110),
             autohide_hide_delay_ms=cp.getint("autohide", "hide_delay_ms", fallback=1500),
         )
 

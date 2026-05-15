@@ -11,7 +11,7 @@ mode     = overlay         ; overlay | tray | cli | autohide
 popup_position = above     ; above | below
 
 [autohide]
-edge          = right      ; right | left | top | bottom
+edge          = bottom     ; bottom | top | left | right
 peek_pixels   = 3
-slide_ms      = 150
+slide_ms      = 110
 hide_delay_ms = 1500

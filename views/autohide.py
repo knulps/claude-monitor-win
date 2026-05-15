@@ -49,11 +49,11 @@ class _MONITORINFO(ctypes.Structure):
 class AutohideView(OverlayView):
     """Overlay that hides to a screen edge, peeking PEEK px until mouse hover."""
 
-    EDGE = "right"
+    EDGE = "bottom"
     PEEK = 3
-    SLIDE_MS = 150
+    SLIDE_MS = 110
     HIDE_DELAY_MS = 1500
-    SLIDE_STEPS = 10
+    SLIDE_STEPS = 18
 
     def __init__(self, manager):
         super().__init__(manager)
@@ -230,7 +230,8 @@ class AutohideView(OverlayView):
         def step(i):
             if not self.root:
                 return
-            frac = i / self.SLIDE_STEPS
+            t = i / self.SLIDE_STEPS
+            frac = t * (2 - t)   # ease-out: fast start, smooth deceleration
             x = int(fx + (tx - fx) * frac)
             y = int(fy + (ty - fy) * frac)
             self.root.geometry(f"{self.W}x{self.H}+{x}+{y}")
